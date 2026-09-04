@@ -220,6 +220,7 @@ module mycore_core (
         dec_bundle[lane_idx].cause = EXC_ILLEGAL;
         dec_bundle[lane_idx].tval = {16'd0, fetch_inst[lane_idx].raw16};
       end
+      dec_bundle[lane_idx].origin_lane = 2'(lane_idx);
     end
   end
 

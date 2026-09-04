@@ -44,10 +44,13 @@ cycles. Future performance comparisons should continue to use one iteration.
 The simple ELF test improved from 1,454 to 564 execution cycles across these
 changes.
 
-The latest run retired 304,388 instructions in 287,188 system cycles and used
-all four dispatch lanes in 62,120 cycles. The decoupled fetch path reduced
+The latest run retired 304,382 instructions in 287,188 system cycles and used
+all four dispatch lanes in 62,119 cycles. The decoupled fetch path reduced
 request and response wait counts to 11,657 cycles each. The additional LSU
 capture stage currently offsets that gain on CoreMark.
+
+Detailed width, commit-origin, occupancy, and stall profiles are recorded in
+`Document/PERFORMANCE.md`.
 
 Run with `scripts/run_coremark_tb.sh`. Use `scripts/fetch_coremark.sh` to obtain
 the pinned benchmark source.

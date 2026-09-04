@@ -123,6 +123,7 @@ package mycore_pkg;
     logic [GHRW-1:0] ghr;
     logic [RASW:0]   ras_sp;
     logic [31:0] ras_top;
+    logic [1:0]  origin_lane;
     logic        excp;
     logic [3:0]  cause;
     logic [31:0] tval;
