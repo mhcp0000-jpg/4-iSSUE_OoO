@@ -13,12 +13,15 @@ module tb_rob;
   logic [FW-1:0] commit_valid_o;
   ren_uop_t commit_uop_o [FW];
   logic commit_ready_i, serial_ready_i;
+  logic serial_valid_o;
+  ren_uop_t serial_uop_o;
   logic trap_valid_o;
   ren_uop_t trap_uop_o;
   logic [3:0] trap_cause_o;
   logic flush_i, br_recover_valid_i;
   logic [RW:0] br_rob_idx_i;
   logic [EW-1:0] br_epoch_i;
+  logic br_recover_fire_o;
   logic [RW:0] rob_head_o, rob_tail_o, occupancy_o;
   logic [EW-1:0] rob_epoch_o;
 

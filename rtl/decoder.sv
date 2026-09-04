@@ -106,7 +106,8 @@ module decoder (
       7'b1100111: begin // JALR
         u.fu = FU_BR; u.is_branch = 1; u.op = BR_JALR; u.use1 = 1; u.rd_valid = (rd != 0); u.imm = imm_i;
         u.is_call = (rd == 1 || rd == 5);
-        u.is_ret  = (rd == 0) && (rs1 == 1 || rs1 == 5);
+        u.is_ret  = (rs1 == 1 || rs1 == 5) &&
+                    (!(rd == 1 || rd == 5) || (rd != rs1));
         if (f3 != 0) ill = 1;
       end
       7'b0001111: begin // MISC-MEM

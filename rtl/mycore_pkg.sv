@@ -16,7 +16,7 @@ package mycore_pkg;
   localparam int SW      = $clog2(NSQ);    // 4
   localparam int NCKPT   = 8;              // rename checkpoints (in-flight branches)
   localparam int CW      = $clog2(NCKPT);  // 3
-  localparam int EW      = 4;              // recovery epoch width
+  localparam int EW      = 16;             // recovery epoch width
   localparam int NIQ_INT = 24;
   localparam int NIQ_MEM = 16;
   localparam int NIQ_FP  = 12;
@@ -25,6 +25,7 @@ package mycore_pkg;
   localparam int RASN    = 16;
   localparam int RASW    = $clog2(RASN);
   localparam int NWB     = 10;             // PRF write ports (ALU0-3, MUL, DIV, LD0, LD1, FPU, CSR)
+  localparam int NREAD   = FW * 3;
 
   localparam logic [31:0] RESET_PC = BOOTROM_BASE;
 
@@ -138,6 +139,13 @@ package mycore_pkg;
     logic [3:0]  cause;
   } rob_wb_t;
 
+  typedef struct packed {
+    rob_wb_t       rob;
+    logic          write_pdst;
+    logic [PW-1:0] pdst;
+    logic [31:0]   data;
+  } exec_wb_t;
+
   // ---------------- Branch resolution / redirect ----------------
   typedef struct packed {
     logic        valid;        // branch resolved this cycle (for BTB/BHT train)
@@ -149,6 +157,8 @@ package mycore_pkg;
     logic [31:0] next_pc;      // actual next pc
     logic [1:0]  btype;
     logic        is_cond;
+    logic        is_call;
+    logic        is_ret;
     logic [GHRW-1:0] ghr;
     logic [RASW:0]   ras_sp;
     logic [31:0] ras_top;
@@ -159,6 +169,12 @@ package mycore_pkg;
   } br_res_t;
 
   // age helpers (pointers carry wrap bit)
+  function automatic logic [RW:0] rob_distance(input logic [RW:0] a, input logic [RW:0] head);
+    return a - head;
+  endfunction
+  function automatic logic [SW:0] sq_distance(input logic [SW:0] a, input logic [SW:0] head);
+    return a - head;
+  endfunction
   function automatic logic rob_younger(input logic [RW:0] a, input logic [RW:0] ref_idx, input logic [RW:0] head);
     logic [RW:0] da, dr;
     da = a - head; dr = ref_idx - head;

@@ -9,5 +9,12 @@ rtl/rvc_expand.sv
 rtl/decoder.sv
 rtl/rename_stage.sv
 rtl/rob.sv
+rtl/physical_regfile.sv
+rtl/issue_queue.sv
+rtl/alu_branch_unit.sv
+rtl/muldiv_unit.sv
+rtl/store_queue.sv
+rtl/store_commit_unit.sv
+rtl/lsu_unit.sv
 rtl/csr_file.sv
 rtl/mycore_soc.sv

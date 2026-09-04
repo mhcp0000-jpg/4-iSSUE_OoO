@@ -27,10 +27,13 @@ module tb_backend;
   logic [CW-1:0] br_ckpt_id_i;
   logic [RW:0] br_rob_idx_i;
   logic [EW-1:0] br_epoch_i;
+  logic rob_recover_fire;
   logic [$clog2(NPRF+1)-1:0] free_count;
   logic [$clog2(NCKPT+1)-1:0] ckpt_free_count;
   logic rob_trap_valid;
   ren_uop_t rob_trap_uop;
+  logic rob_serial_valid;
+  ren_uop_t rob_serial_uop;
   logic [3:0] rob_trap_cause;
 
   always_comb begin
@@ -83,6 +86,8 @@ module tb_backend;
     .commit_uop_o        (rob_commit_uop),
     .commit_ready_i      (1'b1),
     .serial_ready_i      (1'b1),
+    .serial_valid_o      (rob_serial_valid),
+    .serial_uop_o        (rob_serial_uop),
     .trap_valid_o        (rob_trap_valid),
     .trap_uop_o          (rob_trap_uop),
     .trap_cause_o        (rob_trap_cause),
@@ -90,6 +95,7 @@ module tb_backend;
     .br_recover_valid_i  (br_resolve_valid_i && br_mispredict_i),
     .br_rob_idx_i,
     .br_epoch_i,
+    .br_recover_fire_o   (rob_recover_fire),
     .rob_head_o          (rob_head),
     .rob_tail_o          (rob_tail),
     .occupancy_o         (rob_occupancy),

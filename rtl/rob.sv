@@ -16,6 +16,8 @@ module rob (
   output mycore_pkg::ren_uop_t              commit_uop_o [mycore_pkg::FW],
   input  logic                              commit_ready_i,
   input  logic                              serial_ready_i,
+  output logic                              serial_valid_o,
+  output mycore_pkg::ren_uop_t              serial_uop_o,
 
   output logic                              trap_valid_o,
   output mycore_pkg::ren_uop_t              trap_uop_o,
@@ -25,6 +27,7 @@ module rob (
   input  logic                              br_recover_valid_i,
   input  logic [mycore_pkg::RW:0]           br_rob_idx_i,
   input  logic [mycore_pkg::EW-1:0]         br_epoch_i,
+  output logic                              br_recover_fire_o,
 
   output logic [mycore_pkg::RW:0]           rob_head_o,
   output logic [mycore_pkg::RW:0]           rob_tail_o,
@@ -70,6 +73,25 @@ module rob (
     end
   end
 
+  // Side-effecting operations are offered only when already complete at the
+  // registered ROB head. This keeps memory/CSR responses out of the candidate
+  // path and guarantees they execute alone at the architectural boundary.
+  always_comb begin
+    serial_valid_o = 1'b0;
+    serial_uop_o = '0;
+    if (!flush_i && !br_recover_valid_i &&
+        entry_q[head_q[RW-1:0]].valid &&
+        (entry_q[head_q[RW-1:0]].uop.rob_idx == head_q) &&
+        entry_q[head_q[RW-1:0]].complete &&
+        !entry_q[head_q[RW-1:0]].excp &&
+        ((entry_q[head_q[RW-1:0]].uop.d.fu == FU_CSR) ||
+         (entry_q[head_q[RW-1:0]].uop.d.fu == FU_NONE) ||
+         (entry_q[head_q[RW-1:0]].uop.d.fu == FU_ST))) begin
+      serial_valid_o = 1'b1;
+      serial_uop_o = entry_q[head_q[RW-1:0]].uop;
+    end
+  end
+
   // Commit and capacity outputs do not depend on alloc_fire_i. This avoids a
   // ready/fire combinational loop when the ROB is connected to rename.
   always_comb begin
@@ -94,6 +116,7 @@ module rob (
                        entry_q[br_rob_idx_i[RW-1:0]].valid &&
                        (entry_q[br_rob_idx_i[RW-1:0]].uop.rob_idx == br_rob_idx_i) &&
                        (entry_q[br_rob_idx_i[RW-1:0]].uop.epoch == br_epoch_i);
+    br_recover_fire_o = br_recover_match;
     scan_ptr = head_q;
     if (!flush_i && !br_recover_match) begin
       for (int lane_idx = 0; lane_idx < FW; lane_idx++) begin
@@ -108,9 +131,11 @@ module rob (
               trap_cause_o = entry_wb[scan_ptr[RW-1:0]].cause;
               commit_stop = 1'b1;
             end else if ((entry_wb[scan_ptr[RW-1:0]].uop.d.fu == FU_CSR) ||
-                         (entry_wb[scan_ptr[RW-1:0]].uop.d.fu == FU_NONE)) begin
+                         (entry_wb[scan_ptr[RW-1:0]].uop.d.fu == FU_NONE) ||
+                         (entry_wb[scan_ptr[RW-1:0]].uop.d.fu == FU_ST)) begin
               serial_block = 1'b1;
-              if (serial_ready_i) begin
+              if (serial_valid_o &&
+                  (serial_uop_o.rob_idx == scan_ptr) && serial_ready_i) begin
                 commit_valid_o[lane_idx] = 1'b1;
                 commit_uop_o[lane_idx] = entry_wb[scan_ptr[RW-1:0]].uop;
                 commit_count++;

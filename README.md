@@ -24,6 +24,9 @@ The authoritative constants and address-decode helpers are in
 - Eight branch checkpoints with recovery epochs
 - 64-entry, four-wide reorder buffer with ten completion ports
 - Precise ROB exceptions, serialized commit, and branch recovery
+- 128-entry physical register file with validated ten-port wakeup
+- Age-ordered integer and strict-order memory issue queues
+- Integer ALU/branch, RV32M multiply/divide, LSU, and speculative store queue
 - Boot ROM, 128 KiB ITIM, 128 KiB DTIM, CLINT MSIP, and host load port
 - Machine-mode CSRs, F state, 64-bit counters, HPM events, and 16-entry PMP
 
@@ -39,6 +42,14 @@ tools/msys64/usr/bin/bash.exe scripts/run_soc_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_csr_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_pmp_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_elf_load_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_prf_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_iq_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_backend_issue_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_execute_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_sq_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_lsu_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_store_commit_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_store_path_tb.sh
 ```
 
 Ordered synthesizable RTL sources are listed in `rtl/files.f`.
