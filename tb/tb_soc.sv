@@ -95,6 +95,9 @@ module tb_soc;
       host_write_i = 1'b0;
       host_addr_i = addr;
       #1;
+      while (!host_ready_o) begin
+        @(posedge clk_i); #1;
+      end
       assert (host_ready_o && (host_error_o == expect_error));
       data = host_rdata_o;
       host_valid_i = 1'b0;
@@ -111,6 +114,9 @@ module tb_soc;
       imem_valid_i = 1'b1;
       imem_addr_i = addr;
       #1;
+      while (!imem_ready_o) begin
+        @(posedge clk_i); #1;
+      end
       assert (imem_ready_o && (imem_error_o == expect_error));
       data = imem_rdata_o;
       imem_valid_i = 1'b0;
@@ -150,6 +156,9 @@ module tb_soc;
       dmem_write_i = 1'b0;
       dmem_addr_i = addr;
       #1;
+      while (!dmem_ready_o) begin
+        @(posedge clk_i); #1;
+      end
       assert (dmem_ready_o && (dmem_error_o == expect_error));
       data = dmem_rdata_o;
       dmem_valid_i = 1'b0;
@@ -166,6 +175,15 @@ module tb_soc;
     end
     clear_inputs();
     rst_ni = 1'b0;
+    host_valid_i = 1'b1;
+    host_write_i = 1'b1;
+    host_addr_i = CLINT_MSIP_ADDR;
+    host_wdata_i = 1;
+    host_wstrb_i = 4'hf;
+    #1;
+    assert (!host_ready_o);
+    host_valid_i = 1'b0;
+    host_write_i = 1'b0;
     repeat (2) @(posedge clk_i);
     rst_ni = 1'b1;
     @(negedge clk_i); #1;

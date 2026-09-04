@@ -186,6 +186,9 @@ module tb_store_path;
       host_valid_i = 1;
       host_addr_i = addr;
       #1;
+      while (!host_ready_o) begin
+        @(posedge clk_i); #1;
+      end
       assert (host_ready_o && !host_error_o);
       data = host_rdata_o;
       host_valid_i = 0;

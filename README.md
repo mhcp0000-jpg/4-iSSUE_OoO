@@ -27,7 +27,7 @@ The authoritative constants and address-decode helpers are in
 - 128-entry physical register file with validated ten-port wakeup
 - Age-ordered integer and strict-order memory issue queues
 - Integer ALU/branch, RV32M multiply/divide, LSU, and speculative store queue
-- Boot ROM, 128 KiB ITIM, 128 KiB DTIM, CLINT MSIP, and host load port
+- Four-bank 1R1W synchronous-SRAM ITIM/DTIM, Boot ROM, CLINT, and host Xbar port
 - Machine-mode CSRs, configurable F state, 64-bit counters, HPM events, and 16-entry PMP
 - Boot-to-WFI, host ELF load, MSIP wakeup, and `tohost` end-to-end execution
 
@@ -52,6 +52,8 @@ tools/msys64/usr/bin/bash.exe scripts/run_lsu_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_store_commit_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_store_path_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_core_system_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_sram_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_dpi_core_tb.sh
 ```
 
 Ordered synthesizable RTL sources are listed in `rtl/files.f`.

@@ -74,6 +74,9 @@ module tb_elf_load;
       host_write_i = 1'b0;
       host_addr_i = addr;
       #1;
+      while (!host_ready_o) begin
+        @(posedge clk_i); #1;
+      end
       assert (host_ready_o && !host_error_o);
       data = host_rdata_o;
       host_valid_i = 1'b0;

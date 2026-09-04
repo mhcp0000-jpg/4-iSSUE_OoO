@@ -1,6 +1,13 @@
 `timescale 1ns/1ps
 
 package soc_pkg;
+  localparam int TIM_BANKS = 4;
+  localparam int TIM_PORTS = 4;
+  localparam int TIM_PORT_IF = 0;
+  localparam int TIM_PORT_LSU0 = 1;
+  localparam int TIM_PORT_LSU1 = 2;
+  localparam int TIM_PORT_HOST = 3;
+
   localparam logic [31:0] BOOTROM_BASE = 32'h0000_1000;
   localparam int unsigned BOOTROM_BYTES = 4 * 1024;
 

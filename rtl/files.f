@@ -2,7 +2,8 @@ rtl/soc_pkg.sv
 rtl/csr_pkg.sv
 rtl/mycore_pkg.sv
 rtl/bootrom.sv
-rtl/tim_ram.sv
+rtl/sram_1r1w.sv
+rtl/banked_sram_1r1w.sv
 rtl/clint.sv
 rtl/pmp_checker.sv
 rtl/rvc_expand.sv

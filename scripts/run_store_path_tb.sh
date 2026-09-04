@@ -19,7 +19,8 @@ verilator --cc --exe --main --timing --sv -Wall -Wno-fatal \
   "$ROOT/rtl/store_queue.sv" \
   "$ROOT/rtl/store_commit_unit.sv" \
   "$ROOT/rtl/bootrom.sv" \
-  "$ROOT/rtl/tim_ram.sv" \
+  "$ROOT/rtl/sram_1r1w.sv" \
+  "$ROOT/rtl/banked_sram_1r1w.sv" \
   "$ROOT/rtl/clint.sv" \
   "$ROOT/rtl/pmp_checker.sv" \
   "$ROOT/rtl/mycore_soc.sv" \
