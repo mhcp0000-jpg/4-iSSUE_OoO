@@ -21,13 +21,13 @@ The authoritative constants and address-decode helpers are in
 
 - RV32IM execution; F/C decode exists but is not advertised until execution support lands
 - Four-wide fetch, decode, speculative rename, dispatch, integer issue, and commit
-- 128-bit four-bank fetch lines with static branch prediction and a 16-entry RAS
+- Two-outstanding, 128-bit four-bank fetch with static prediction and a 16-entry RAS
 - Eight branch checkpoints with recovery epochs
 - 64-entry, four-wide reorder buffer with ten completion ports
 - Precise ROB exceptions, serialized commit, and branch recovery
 - 128-entry physical register file with validated ten-port wakeup
-- Age-ordered integer and strict-order memory issue queues
-- Integer ALU/branch, RV32M multiply/divide, LSU, and speculative store queue
+- Age-ordered integer and two-wide strict-order memory issue queues
+- Integer ALU/branch, RV32M multiply/divide, two stateful LSUs, and speculative SQ
 - Four-bank 1R1W synchronous-SRAM ITIM/DTIM, Boot ROM, CLINT, and host Xbar port
 - Machine-mode CSRs, configurable F state, 64-bit counters, HPM events, and 16-entry PMP
 - Boot-to-WFI, host ELF load, MSIP wakeup, and `tohost` end-to-end execution
@@ -50,6 +50,8 @@ tools/msys64/usr/bin/bash.exe scripts/run_backend_issue_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_execute_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_sq_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_lsu_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_dual_lsu_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_mem_iq_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_store_commit_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_store_path_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_core_system_tb.sh

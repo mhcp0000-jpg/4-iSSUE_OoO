@@ -17,14 +17,7 @@ module physical_regfile (
 
   input  logic [mycore_pkg::PW-1:0]    serial_raddr_i,
   output logic [31:0]                  serial_rdata_o,
-  output logic                         serial_rready_o,
-
-  input  logic [mycore_pkg::PW-1:0]    mem_base_raddr_i,
-  input  logic [mycore_pkg::PW-1:0]    mem_data_raddr_i,
-  output logic [31:0]                  mem_base_rdata_o,
-  output logic [31:0]                  mem_data_rdata_o,
-  output logic                         mem_base_rready_o,
-  output logic                         mem_data_rready_o
+  output logic                         serial_rready_o
 );
   import mycore_pkg::*;
 
@@ -46,23 +39,6 @@ module physical_regfile (
           (owner_epoch_q[wb_i[wb_idx].pdst] == wb_i[wb_idx].rob.epoch)) begin
         wb_accepted_o[wb_idx] = 1'b1;
         wb_written[wb_i[wb_idx].pdst] = 1'b1;
-      end
-    end
-  end
-
-  always_comb begin
-    mem_base_rdata_o = data_q[mem_base_raddr_i];
-    mem_data_rdata_o = data_q[mem_data_raddr_i];
-    mem_base_rready_o = ready_q[mem_base_raddr_i];
-    mem_data_rready_o = ready_q[mem_data_raddr_i];
-    for (int wb_idx = 0; wb_idx < NWB; wb_idx++) begin
-      if (wb_accepted_o[wb_idx] && (wb_i[wb_idx].pdst == mem_base_raddr_i)) begin
-        mem_base_rdata_o = wb_i[wb_idx].data;
-        mem_base_rready_o = 1'b1;
-      end
-      if (wb_accepted_o[wb_idx] && (wb_i[wb_idx].pdst == mem_data_raddr_i)) begin
-        mem_data_rdata_o = wb_i[wb_idx].data;
-        mem_data_rready_o = 1'b1;
       end
     end
   end

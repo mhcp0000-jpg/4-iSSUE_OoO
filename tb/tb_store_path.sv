@@ -10,7 +10,7 @@ module tb_store_path;
   logic [FW-1:0] alloc_valid, sq_dispatch_valid;
   logic rob_alloc_ready, rob_alloc_fire, sq_dispatch_ready;
   rob_wb_t rob_wb [NWB];
-  exec_wb_t sq_execute_wb, store_fault_wb;
+  exec_wb_t sq_execute_wb [NLSU], store_fault_wb;
   logic [FW-1:0] rob_commit_valid;
   ren_uop_t rob_commit_uop [FW];
   logic rob_serial_valid, rob_serial_ready, rob_recover_fire;
@@ -23,10 +23,10 @@ module tb_store_path;
   logic [EW-1:0] rob_epoch;
 
   logic [SW:0] sq_head, sq_tail;
-  logic sq_execute_valid;
-  ren_uop_t sq_execute_uop, sq_commit_uop;
-  logic [31:0] sq_execute_addr, sq_execute_data;
-  logic [3:0] sq_execute_strb;
+  logic [NLSU-1:0] sq_execute_valid;
+  ren_uop_t sq_execute_uop [NLSU], sq_commit_uop;
+  logic [31:0] sq_execute_addr [NLSU], sq_execute_data [NLSU];
+  logic [3:0] sq_execute_strb [NLSU];
   logic sq_commit_ready, sq_commit_fire;
   logic [31:0] sq_commit_addr, sq_commit_data;
   logic [3:0] sq_commit_strb;
@@ -38,8 +38,10 @@ module tb_store_path;
   logic [3:0] store_dmem_wstrb;
   logic store_dmem_ready, store_dmem_error;
 
-  logic soc_dmem_valid, soc_dmem_ready, soc_dmem_error;
-  logic [31:0] soc_dmem_rdata;
+  logic [NLSU-1:0] soc_dmem_valid, soc_dmem_write, soc_dmem_ready, soc_dmem_error;
+  logic [31:0] soc_dmem_addr [NLSU], soc_dmem_wdata [NLSU], soc_dmem_rdata [NLSU];
+  logic [1:0] soc_dmem_size [NLSU];
+  logic [3:0] soc_dmem_wstrb [NLSU];
   logic host_valid_i, host_write_i, host_ready_o, host_error_o;
   logic [31:0] host_addr_i, host_wdata_i, host_rdata_o;
   logic [3:0] host_wstrb_i;
@@ -50,13 +52,26 @@ module tb_store_path;
 
   always_comb begin
     for (int wb_idx = 0; wb_idx < NWB; wb_idx++) rob_wb[wb_idx] = '0;
-    rob_wb[0] = sq_execute_wb.rob;
+    rob_wb[0] = sq_execute_wb[0].rob;
     rob_wb[1] = store_fault_wb.rob;
     sq_commit_fire = rob_commit_valid[0] &&
                      (rob_commit_uop[0].d.fu == FU_ST);
-    soc_dmem_valid = memory_gate && store_dmem_valid;
-    store_dmem_ready = memory_gate && soc_dmem_ready;
-    store_dmem_error = memory_gate && soc_dmem_error;
+    soc_dmem_valid = '0;
+    soc_dmem_write = '0;
+    for (int lsu_idx = 0; lsu_idx < NLSU; lsu_idx++) begin
+      soc_dmem_addr[lsu_idx] = '0;
+      soc_dmem_wdata[lsu_idx] = '0;
+      soc_dmem_size[lsu_idx] = '0;
+      soc_dmem_wstrb[lsu_idx] = '0;
+    end
+    soc_dmem_valid[0] = memory_gate && store_dmem_valid;
+    soc_dmem_write[0] = store_dmem_write;
+    soc_dmem_addr[0] = store_dmem_addr;
+    soc_dmem_wdata[0] = store_dmem_wdata;
+    soc_dmem_size[0] = store_dmem_size;
+    soc_dmem_wstrb[0] = store_dmem_wstrb;
+    store_dmem_ready = memory_gate && soc_dmem_ready[0];
+    store_dmem_error = memory_gate && soc_dmem_error[0];
   end
 
   rob u_rob (
@@ -83,8 +98,8 @@ module tb_store_path;
     .commit_ready_o(sq_commit_ready), .commit_uop_o(sq_commit_uop),
     .commit_addr_o(sq_commit_addr), .commit_data_o(sq_commit_data),
     .commit_strb_o(sq_commit_strb), .commit_fire_i(sq_commit_fire),
-    .load_query_valid_i(1'b0), .load_query_addr_i('0), .load_query_rob_i('0),
-    .rob_head_i(rob_head), .load_older_unknown_o(), .load_forward_mask_o(),
+    .load_query_valid_i('0), .load_query_addr_i('{default:'0}),
+    .load_query_sq_i('{default:'0}), .load_older_unknown_o(), .load_forward_mask_o(),
     .load_forward_data_o(), .flush_i, .br_recover_fire_i(1'b0),
     .br_sq_tail_i('0), .occupancy_o(sq_occupancy)
   );
@@ -103,11 +118,12 @@ module tb_store_path;
   );
 
   mycore_soc u_soc (
-    .clk_i, .rst_ni, .imem_valid_i(1'b0), .imem_addr_i('0), .imem_size_i(2'd2),
-    .imem_ready_o(), .imem_rdata_o(), .imem_error_o(),
-    .dmem_valid_i(soc_dmem_valid), .dmem_write_i(store_dmem_write),
-    .dmem_addr_i(store_dmem_addr), .dmem_size_i(store_dmem_size),
-    .dmem_wdata_i(store_dmem_wdata), .dmem_wstrb_i(store_dmem_wstrb),
+    .clk_i, .rst_ni, .imem_req_valid_i(1'b0), .imem_req_addr_i('0),
+    .imem_req_size_i(2'd2), .imem_req_ready_o(), .imem_rsp_valid_o(),
+    .imem_rsp_ready_i(1'b1), .imem_rsp_rdata_o(), .imem_rsp_error_o(),
+    .dmem_valid_i(soc_dmem_valid), .dmem_write_i(soc_dmem_write),
+    .dmem_addr_i(soc_dmem_addr), .dmem_size_i(soc_dmem_size),
+    .dmem_wdata_i(soc_dmem_wdata), .dmem_wstrb_i(soc_dmem_wstrb),
     .dmem_ready_o(soc_dmem_ready), .dmem_rdata_o(soc_dmem_rdata),
     .dmem_error_o(soc_dmem_error), .host_valid_i, .host_write_i,
     .host_addr_i, .host_wdata_i, .host_wstrb_i, .host_ready_o,
@@ -128,10 +144,12 @@ module tb_store_path;
       rob_alloc_fire = 0;
       for (int lane_idx = 0; lane_idx < FW; lane_idx++) alloc_uop[lane_idx] = '0;
       sq_execute_valid = 0;
-      sq_execute_uop = '0;
-      sq_execute_addr = 0;
-      sq_execute_data = 0;
-      sq_execute_strb = 0;
+      for (int lsu_idx = 0; lsu_idx < NLSU; lsu_idx++) begin
+        sq_execute_uop[lsu_idx] = '0;
+        sq_execute_addr[lsu_idx] = 0;
+        sq_execute_data[lsu_idx] = 0;
+        sq_execute_strb[lsu_idx] = 0;
+      end
       flush_i = 0;
       host_valid_i = 0;
       host_write_i = 0;
@@ -166,16 +184,16 @@ module tb_store_path;
     input logic [31:0] data
   );
     begin
-      sq_execute_uop = alloc_uop[0];
-      sq_execute_uop.rob_idx = rob_tail - 1'b1;
-      sq_execute_uop.sq_idx = sq_tail - 1'b1;
-      sq_execute_uop.epoch = rob_epoch;
-      sq_execute_valid = 1;
-      sq_execute_addr = addr;
-      sq_execute_data = data;
-      sq_execute_strb = 4'hf;
+      sq_execute_uop[0] = alloc_uop[0];
+      sq_execute_uop[0].rob_idx = rob_tail - 1'b1;
+      sq_execute_uop[0].sq_idx = sq_tail - 1'b1;
+      sq_execute_uop[0].epoch = rob_epoch;
+      sq_execute_valid[0] = 1;
+      sq_execute_addr[0] = addr;
+      sq_execute_data[0] = data;
+      sq_execute_strb[0] = 4'hf;
       #1;
-      assert (sq_execute_wb.rob.valid);
+      assert (sq_execute_wb[0].rob.valid);
       @(posedge clk_i); #1;
       clear_inputs();
     end

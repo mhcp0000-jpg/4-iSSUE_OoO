@@ -20,14 +20,15 @@ package mycore_pkg;
   localparam int NIQ_INT = 24;
   localparam int NIQ_MEM = 16;
   localparam int NIQ_FP  = 12;
+  localparam int NLSU    = 2;
   localparam int NHWQ    = 32;             // fetch halfword queue depth
   localparam int GHRW    = 10;
   localparam int RASN    = 16;
   localparam int RASW    = $clog2(RASN);
-  localparam int NWB     = 10;             // PRF write ports (ALU0-3, MUL, DIV, LD0, LD1, FPU, CSR)
+  localparam int NWB     = 10;             // validated completion/writeback ports
   localparam int NREAD_DISPATCH = FW * 3;
   localparam int NREAD_INT      = FW * 2;
-  localparam int NREAD_MEM      = 2;
+  localparam int NREAD_MEM      = 4;
   localparam int NREAD_SERIAL   = 1;
   localparam int NREAD_FP       = 3;
   localparam int NREAD = NREAD_DISPATCH + NREAD_INT + NREAD_MEM +

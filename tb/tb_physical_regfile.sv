@@ -16,9 +16,6 @@ module tb_physical_regfile;
   logic [PW-1:0] serial_raddr_i;
   logic [31:0] serial_rdata_o;
   logic serial_rready_o;
-  logic [PW-1:0] mem_base_raddr_i, mem_data_raddr_i;
-  logic [31:0] mem_base_rdata_o, mem_data_rdata_o;
-  logic mem_base_rready_o, mem_data_rready_o;
 
   physical_regfile dut (.*);
 
@@ -38,8 +35,6 @@ module tb_physical_regfile;
       for (int read_idx = 0; read_idx < NREAD; read_idx++)
         raddr_i[read_idx] = '0;
       serial_raddr_i = '0;
-      mem_base_raddr_i = '0;
-      mem_data_raddr_i = '0;
       #1;
     end
   endtask

@@ -2,11 +2,18 @@
 
 package soc_pkg;
   localparam int TIM_BANKS = 4;
-  localparam int TIM_PORTS = 7;
-  localparam int TIM_PORT_IF0 = 0;
-  localparam int TIM_PORT_LSU0 = 4;
-  localparam int TIM_PORT_LSU1 = 5;
-  localparam int TIM_PORT_HOST = 6;
+  localparam int TIM_PORTS = 11;
+  localparam int TIM_PORT_IF_A0 = 0;
+  localparam int TIM_PORT_IF_A1 = 1;
+  localparam int TIM_PORT_IF_A2 = 2;
+  localparam int TIM_PORT_IF_A3 = 3;
+  localparam int TIM_PORT_IF_B0 = 4;
+  localparam int TIM_PORT_IF_B1 = 5;
+  localparam int TIM_PORT_IF_B2 = 6;
+  localparam int TIM_PORT_IF_B3 = 7;
+  localparam int TIM_PORT_LSU0 = 8;
+  localparam int TIM_PORT_LSU1 = 9;
+  localparam int TIM_PORT_HOST = 10;
 
   localparam logic [31:0] BOOTROM_BASE = 32'h0000_1000;
   localparam int unsigned BOOTROM_BYTES = 4 * 1024;

@@ -57,7 +57,7 @@ module tb_coremark_system;
   real measured_ipc;
   longint unsigned retired_instructions, branch_count, branch_mispred_count;
   longint unsigned load_count, store_count, backend_stall_cycles;
-  longint unsigned imem_wait_cycles;
+  longint unsigned imem_req_wait_cycles, imem_rsp_wait_cycles;
   longint unsigned dispatch_instructions, dispatch_cycles, full_dispatch_cycles;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -68,7 +68,8 @@ module tb_coremark_system;
       load_count <= 0;
       store_count <= 0;
       backend_stall_cycles <= 0;
-      imem_wait_cycles <= 0;
+      imem_req_wait_cycles <= 0;
+      imem_rsp_wait_cycles <= 0;
       dispatch_instructions <= 0;
       dispatch_cycles <= 0;
       full_dispatch_cycles <= 0;
@@ -81,8 +82,10 @@ module tb_coremark_system;
       store_count <= store_count + dut.u_core.perf_events[csr_pkg::PERF_STORE];
       backend_stall_cycles <= backend_stall_cycles +
                               (dut.u_core.fetch_inst[0].valid && !dut.u_core.fetch_consume);
-      imem_wait_cycles <= imem_wait_cycles +
-                          (dut.u_core.imem_valid_o && !dut.u_core.imem_ready_i);
+      imem_req_wait_cycles <= imem_req_wait_cycles +
+        (dut.u_core.imem_req_valid_o && !dut.u_core.imem_req_ready_i);
+      imem_rsp_wait_cycles <= imem_rsp_wait_cycles +
+        (dut.u_core.imem_rsp_valid_i && !dut.u_core.imem_rsp_ready_o);
       if (dut.u_core.dispatch_fire) begin
         dispatch_instructions <= dispatch_instructions +
                                  64'($countones(dut.u_core.dispatch_valid));
@@ -134,8 +137,8 @@ module tb_coremark_system;
     $display("Perf retired=%0d branches=%0d mispredicts=%0d loads=%0d stores=%0d",
              retired_instructions, branch_count, branch_mispred_count,
              load_count, store_count);
-    $display("Perf backend_stall_cycles=%0d imem_wait_cycles=%0d",
-             backend_stall_cycles, imem_wait_cycles);
+    $display("Perf backend_stall_cycles=%0d imem_req_wait_cycles=%0d imem_rsp_wait_cycles=%0d",
+             backend_stall_cycles, imem_req_wait_cycles, imem_rsp_wait_cycles);
     $display("Perf IPC=%0f dispatched=%0d dispatch_cycles=%0d full_width=%0d",
              measured_ipc, dispatch_instructions, dispatch_cycles,
              full_dispatch_cycles);

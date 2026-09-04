@@ -4,22 +4,24 @@ module mycore_core (
   input  logic        clk_i,
   input  logic        rst_ni,
 
-  output logic        imem_valid_o,
-  output logic [31:0] imem_addr_o,
-  output logic [1:0]  imem_size_o,
-  input  logic        imem_ready_i,
-  input  logic [127:0] imem_rdata_i,
-  input  logic [3:0]  imem_error_i,
+  output logic         imem_req_valid_o,
+  output logic [31:0]  imem_req_addr_o,
+  output logic [1:0]   imem_req_size_o,
+  input  logic         imem_req_ready_i,
+  input  logic         imem_rsp_valid_i,
+  output logic         imem_rsp_ready_o,
+  input  logic [127:0] imem_rsp_rdata_i,
+  input  logic [3:0]   imem_rsp_error_i,
 
-  output logic        dmem_valid_o,
-  output logic        dmem_write_o,
-  output logic [31:0] dmem_addr_o,
-  output logic [1:0]  dmem_size_o,
-  output logic [31:0] dmem_wdata_o,
-  output logic [3:0]  dmem_wstrb_o,
-  input  logic        dmem_ready_i,
-  input  logic [31:0] dmem_rdata_i,
-  input  logic        dmem_error_i,
+  output logic [mycore_pkg::NLSU-1:0] dmem_valid_o,
+  output logic [mycore_pkg::NLSU-1:0] dmem_write_o,
+  output logic [31:0] dmem_addr_o [mycore_pkg::NLSU],
+  output logic [1:0]  dmem_size_o [mycore_pkg::NLSU],
+  output logic [31:0] dmem_wdata_o [mycore_pkg::NLSU],
+  output logic [3:0]  dmem_wstrb_o [mycore_pkg::NLSU],
+  input  logic [mycore_pkg::NLSU-1:0] dmem_ready_i,
+  input  logic [31:0] dmem_rdata_i [mycore_pkg::NLSU],
+  input  logic [mycore_pkg::NLSU-1:0] dmem_error_i,
 
   input  logic        irq_software_i,
   input  logic        irq_timer_i,
@@ -35,6 +37,7 @@ module mycore_core (
   import csr_pkg::*;
 
   localparam int INT_RBASE = NREAD_DISPATCH;
+  localparam int MEM_RBASE = NREAD_DISPATCH + NREAD_INT;
 
   fetch_inst_t fetch_inst [FW];
   dec_uop_t decoded_uop [FW], dec_bundle [FW];
@@ -74,8 +77,7 @@ module mycore_core (
   logic [NREAD-1:0] prf_rready;
   logic [31:0] serial_prf_rdata;
   logic serial_prf_rready;
-  logic [31:0] mem_base_rdata, mem_data_rdata;
-  logic mem_base_rready, mem_data_rready;
+  logic [31:0] mem_base_rdata [NLSU], mem_data_rdata [NLSU];
   logic [FW-1:0] dispatch_src1_ready, dispatch_src2_ready, dispatch_src3_ready;
   logic [NWB-1:0] wb_accepted;
   exec_wb_t exec_wb_q [NWB], exec_wb_n [NWB];
@@ -83,14 +85,14 @@ module mycore_core (
   logic [FW-1:0] int_issue_valid, int_issue_accept;
   ren_uop_t int_issue_uop [FW];
   logic [4:0] int_iq_occupancy;
-  logic mem_issue_valid, mem_issue_accept;
-  ren_uop_t mem_issue_uop [1];
+  logic [NLSU-1:0] mem_issue_valid, mem_issue_accept;
+  ren_uop_t mem_issue_uop [NLSU];
   logic [4:0] mem_iq_occupancy;
   logic fp_issue_valid;
   ren_uop_t fp_issue_uop [1];
   logic [3:0] fp_iq_occupancy;
 
-  exec_wb_t alu_wb [FW], muldiv_wb, lsu_wb, sq_execute_wb;
+  exec_wb_t alu_wb [FW], muldiv_wb, lsu_wb [NLSU], sq_execute_wb [NLSU];
   exec_wb_t store_fault_wb, system_wb, csr_wb;
   br_res_t alu_br [FW], branch_q, branch_n;
   logic branch_slot_used, muldiv_slot_used;
@@ -98,16 +100,25 @@ module mycore_core (
   logic [31:0] muldiv_src1, muldiv_src2;
   logic muldiv_valid;
 
-  logic lsu_ready, lsu_dmem_valid, load_dmem_ready, load_dmem_error;
-  logic [31:0] lsu_dmem_addr;
-  logic [1:0] lsu_dmem_size;
-  logic store_execute_valid;
-  ren_uop_t store_execute_uop;
-  logic [31:0] store_execute_addr, store_execute_data;
-  logic [3:0] store_execute_strb;
-  logic load_older_unknown;
-  logic [3:0] load_forward_mask;
-  logic [31:0] load_forward_data;
+  logic [NLSU-1:0] lsu_input_valid, lsu_ready, lsu_busy, lsu_dmem_valid;
+  ren_uop_t lsu_input_uop [NLSU];
+  logic [31:0] lsu_input_base [NLSU], lsu_input_data [NLSU];
+  logic [NLSU-1:0] lsu_input_unknown;
+  logic [3:0] lsu_input_forward_mask [NLSU];
+  logic [31:0] lsu_input_forward_data [NLSU];
+  logic [31:0] lsu_dmem_addr [NLSU];
+  logic [1:0] lsu_dmem_size [NLSU];
+  logic [NLSU-1:0] load_dmem_ready, load_dmem_error;
+  logic [NLSU-1:0] store_execute_valid;
+  ren_uop_t store_execute_uop [NLSU];
+  logic [31:0] store_execute_addr [NLSU], store_execute_data [NLSU];
+  logic [3:0] store_execute_strb [NLSU];
+  logic [NLSU-1:0] load_query_valid, load_older_unknown;
+  logic [31:0] load_query_addr [NLSU];
+  logic [SW:0] load_query_sq [NLSU];
+  logic [3:0] load_forward_mask [NLSU];
+  logic [31:0] load_forward_data [NLSU];
+  integer oldest_lsu_slot, younger_lsu_slot;
 
   logic [SW:0] sq_head, sq_tail;
   logic sq_commit_ready, sq_commit_fire;
@@ -146,8 +157,9 @@ module mycore_core (
     .redirect_valid_i(frontend_redirect), .redirect_pc_i(frontend_redirect_pc),
     .recover_valid_i(rob_recover_fire), .recover_ras_sp_i(branch_q.ras_sp),
     .recover_ras_top_i(branch_q.ras_top),
-    .imem_valid_o, .imem_addr_o, .imem_size_o, .imem_ready_i, .imem_rdata_i,
-    .imem_error_i, .fetch_o(fetch_inst), .rvc_illegal_o(rvc_illegal),
+    .imem_req_valid_o, .imem_req_addr_o, .imem_req_size_o, .imem_req_ready_i,
+    .imem_rsp_valid_i, .imem_rsp_ready_o, .imem_rsp_rdata_i, .imem_rsp_error_i,
+    .fetch_o(fetch_inst), .rvc_illegal_o(rvc_illegal),
     .fetch_fault_o(fetch_fault), .cross_word_o(fetch_cross_word), .pc_o(fetch_pc)
   );
 
@@ -287,6 +299,12 @@ module mycore_core (
       prf_raddr[INT_RBASE+lane_idx*2] = int_issue_uop[lane_idx].ps1;
       prf_raddr[INT_RBASE+lane_idx*2+1] = int_issue_uop[lane_idx].ps2;
     end
+    for (int mem_idx = 0; mem_idx < NLSU; mem_idx++) begin
+      prf_raddr[MEM_RBASE+mem_idx*2] = mem_issue_uop[mem_idx].ps1;
+      prf_raddr[MEM_RBASE+mem_idx*2+1] = mem_issue_uop[mem_idx].ps2;
+      mem_base_rdata[mem_idx] = prf_rdata[MEM_RBASE+mem_idx*2];
+      mem_data_rdata[mem_idx] = prf_rdata[MEM_RBASE+mem_idx*2+1];
+    end
   end
 
   physical_regfile u_prf (
@@ -294,10 +312,7 @@ module mycore_core (
     .alloc_uop_i(ren_uop), .wb_i(exec_wb_q), .wb_accepted_o(wb_accepted),
     .raddr_i(prf_raddr), .rdata_o(prf_rdata), .rready_o(prf_rready),
     .serial_raddr_i(rob_serial_uop.ps1), .serial_rdata_o(serial_prf_rdata),
-    .serial_rready_o(serial_prf_rready),
-    .mem_base_raddr_i(mem_issue_uop[0].ps1), .mem_data_raddr_i(mem_issue_uop[0].ps2),
-    .mem_base_rdata_o(mem_base_rdata), .mem_data_rdata_o(mem_data_rdata),
-    .mem_base_rready_o(mem_base_rready), .mem_data_rready_o(mem_data_rready)
+    .serial_rready_o(serial_prf_rready)
   );
 
   issue_queue #(.DEPTH(NIQ_INT), .ISSUE_WIDTH(FW)) u_int_iq (
@@ -312,7 +327,7 @@ module mycore_core (
     .rob_head_i(rob_head), .occupancy_o(int_iq_occupancy)
   );
 
-  issue_queue #(.DEPTH(NIQ_MEM), .ISSUE_WIDTH(1), .STRICT_ORDER(1'b1)) u_mem_iq (
+  issue_queue #(.DEPTH(NIQ_MEM), .ISSUE_WIDTH(NLSU), .STRICT_ORDER(1'b1)) u_mem_iq (
     .clk_i, .rst_ni, .dispatch_valid_i(mem_dispatch_valid), .dispatch_uop_i(ren_uop),
     .dispatch_src1_ready_i(dispatch_src1_ready),
     .dispatch_src2_ready_i(dispatch_src2_ready),
@@ -395,19 +410,85 @@ module mycore_core (
     end
   end
 
-  lsu_unit u_lsu (
-    .valid_i(mem_issue_valid && !pipeline_issue_block), .uop_i(mem_issue_uop[0]),
-    .base_i(mem_base_rdata), .store_data_i(mem_data_rdata),
-    .older_store_unknown_i(load_older_unknown), .forward_mask_i(load_forward_mask),
-    .forward_data_i(load_forward_data), .dmem_valid_o(lsu_dmem_valid),
-    .dmem_addr_o(lsu_dmem_addr), .dmem_size_o(lsu_dmem_size),
-    .dmem_ready_i(load_dmem_ready), .dmem_rdata_i(dmem_rdata_i),
-    .dmem_error_i(load_dmem_error), .store_execute_valid_o(store_execute_valid),
-    .store_execute_uop_o(store_execute_uop), .store_execute_addr_o(store_execute_addr),
-    .store_execute_data_o(store_execute_data), .store_execute_strb_o(store_execute_strb),
-    .ready_o(lsu_ready), .wb_o(lsu_wb)
-  );
-  assign mem_issue_accept = lsu_ready && !pipeline_issue_block;
+  always_comb begin
+    mem_issue_accept = '0;
+    lsu_input_valid = '0;
+    oldest_lsu_slot = -1;
+    younger_lsu_slot = -1;
+    for (int lsu_idx = 0; lsu_idx < NLSU; lsu_idx++) begin
+      lsu_input_uop[lsu_idx] = '0;
+      lsu_input_base[lsu_idx] = '0;
+      lsu_input_data[lsu_idx] = '0;
+      lsu_input_unknown[lsu_idx] = 1'b0;
+      lsu_input_forward_mask[lsu_idx] = '0;
+      lsu_input_forward_data[lsu_idx] = '0;
+    end
+
+    if (!pipeline_issue_block && mem_issue_valid[0]) begin
+      if (!lsu_busy[0])
+        oldest_lsu_slot = 0;
+      else if (!lsu_busy[1])
+        oldest_lsu_slot = 1;
+      if (oldest_lsu_slot >= 0) begin
+        lsu_input_valid[oldest_lsu_slot] = 1'b1;
+        lsu_input_uop[oldest_lsu_slot] = mem_issue_uop[0];
+        lsu_input_base[oldest_lsu_slot] = mem_base_rdata[0];
+        lsu_input_data[oldest_lsu_slot] = mem_data_rdata[0];
+        lsu_input_unknown[oldest_lsu_slot] = load_older_unknown[0];
+        lsu_input_forward_mask[oldest_lsu_slot] = load_forward_mask[0];
+        lsu_input_forward_data[oldest_lsu_slot] = load_forward_data[0];
+        mem_issue_accept[0] = (mem_issue_uop[0].d.fu == FU_ST) ||
+                              !load_older_unknown[0];
+      end
+    end
+
+    if (mem_issue_accept[0] && mem_issue_valid[1]) begin
+      younger_lsu_slot = (oldest_lsu_slot == 0) ? 1 : 0;
+      if (!lsu_busy[younger_lsu_slot]) begin
+        lsu_input_valid[younger_lsu_slot] = 1'b1;
+        lsu_input_uop[younger_lsu_slot] = mem_issue_uop[1];
+        lsu_input_base[younger_lsu_slot] = mem_base_rdata[1];
+        lsu_input_data[younger_lsu_slot] = mem_data_rdata[1];
+        lsu_input_unknown[younger_lsu_slot] = load_older_unknown[1];
+        lsu_input_forward_mask[younger_lsu_slot] = load_forward_mask[1];
+        lsu_input_forward_data[younger_lsu_slot] = load_forward_data[1];
+        mem_issue_accept[1] = (mem_issue_uop[1].d.fu == FU_ST) ||
+                              !load_older_unknown[1];
+      end
+    end
+  end
+
+  for (genvar lsu_idx = 0; lsu_idx < NLSU; lsu_idx++) begin : g_lsu
+    lsu_unit u_lsu (
+      .clk_i, .rst_ni, .valid_i(lsu_input_valid[lsu_idx]),
+      .uop_i(lsu_input_uop[lsu_idx]), .base_i(lsu_input_base[lsu_idx]),
+      .store_data_i(lsu_input_data[lsu_idx]),
+      .older_store_unknown_i(lsu_input_unknown[lsu_idx]),
+      .forward_mask_i(lsu_input_forward_mask[lsu_idx]),
+      .forward_data_i(lsu_input_forward_data[lsu_idx]),
+      .dmem_valid_o(lsu_dmem_valid[lsu_idx]), .dmem_addr_o(lsu_dmem_addr[lsu_idx]),
+      .dmem_size_o(lsu_dmem_size[lsu_idx]), .dmem_ready_i(load_dmem_ready[lsu_idx]),
+      .dmem_rdata_i(dmem_rdata_i[lsu_idx]), .dmem_error_i(load_dmem_error[lsu_idx]),
+      .store_execute_valid_o(store_execute_valid[lsu_idx]),
+      .store_execute_uop_o(store_execute_uop[lsu_idx]),
+      .store_execute_addr_o(store_execute_addr[lsu_idx]),
+      .store_execute_data_o(store_execute_data[lsu_idx]),
+      .store_execute_strb_o(store_execute_strb[lsu_idx]),
+      .flush_i(global_flush || trap_take), .br_recover_fire_i(rob_recover_fire),
+      .br_rob_idx_i(branch_q.rob_idx), .rob_head_i(rob_head),
+      .ready_o(lsu_ready[lsu_idx]), .busy_o(lsu_busy[lsu_idx]), .wb_o(lsu_wb[lsu_idx])
+    );
+  end
+
+  always_comb begin
+    for (int load_idx = 0; load_idx < NLSU; load_idx++) begin
+      load_query_valid[load_idx] = mem_issue_valid[load_idx] &&
+                                   (mem_issue_uop[load_idx].d.fu == FU_LD);
+      load_query_addr[load_idx] = mem_base_rdata[load_idx] +
+                                  mem_issue_uop[load_idx].d.imm;
+      load_query_sq[load_idx] = mem_issue_uop[load_idx].sq_idx;
+    end
+  end
 
   store_queue u_sq (
     .clk_i, .rst_ni, .dispatch_valid_i(store_dispatch_valid),
@@ -419,9 +500,8 @@ module mycore_core (
     .commit_ready_o(sq_commit_ready), .commit_uop_o(sq_commit_uop),
     .commit_addr_o(sq_commit_addr), .commit_data_o(sq_commit_data),
     .commit_strb_o(sq_commit_strb), .commit_fire_i(sq_commit_fire),
-    .load_query_valid_i(mem_issue_valid && (mem_issue_uop[0].d.fu == FU_LD)),
-    .load_query_addr_i(lsu_dmem_addr), .load_query_rob_i(mem_issue_uop[0].rob_idx),
-    .rob_head_i(rob_head), .load_older_unknown_o(load_older_unknown),
+    .load_query_valid_i(load_query_valid), .load_query_addr_i(load_query_addr),
+    .load_query_sq_i(load_query_sq), .load_older_unknown_o(load_older_unknown),
     .load_forward_mask_o(load_forward_mask), .load_forward_data_o(load_forward_data),
     .flush_i(global_flush), .br_recover_fire_i(rob_recover_fire),
     .br_sq_tail_i(branch_q.sq_idx), .occupancy_o(sq_occupancy)
@@ -450,16 +530,26 @@ module mycore_core (
   );
 
   always_comb begin
-    dmem_valid_o = store_dmem_valid || lsu_dmem_valid;
-    dmem_write_o = store_dmem_valid;
-    dmem_addr_o = store_dmem_valid ? store_dmem_addr : lsu_dmem_addr;
-    dmem_size_o = store_dmem_valid ? store_dmem_size : lsu_dmem_size;
-    dmem_wdata_o = store_dmem_valid ? store_dmem_wdata : 32'd0;
-    dmem_wstrb_o = store_dmem_valid ? store_dmem_wstrb : 4'd0;
-    store_dmem_ready = store_dmem_valid && dmem_ready_i;
-    store_dmem_error = store_dmem_valid && dmem_error_i;
-    load_dmem_ready = !store_dmem_valid && dmem_ready_i;
-    load_dmem_error = !store_dmem_valid && dmem_error_i;
+    for (int lsu_idx = 0; lsu_idx < NLSU; lsu_idx++) begin
+      dmem_valid_o[lsu_idx] = lsu_dmem_valid[lsu_idx];
+      dmem_write_o[lsu_idx] = 1'b0;
+      dmem_addr_o[lsu_idx] = lsu_dmem_addr[lsu_idx];
+      dmem_size_o[lsu_idx] = lsu_dmem_size[lsu_idx];
+      dmem_wdata_o[lsu_idx] = '0;
+      dmem_wstrb_o[lsu_idx] = '0;
+      load_dmem_ready[lsu_idx] = dmem_ready_i[lsu_idx];
+      load_dmem_error[lsu_idx] = dmem_error_i[lsu_idx];
+    end
+    if (store_dmem_valid && !lsu_busy[0]) begin
+      dmem_valid_o[0] = 1'b1;
+      dmem_write_o[0] = store_dmem_write;
+      dmem_addr_o[0] = store_dmem_addr;
+      dmem_size_o[0] = store_dmem_size;
+      dmem_wdata_o[0] = store_dmem_wdata;
+      dmem_wstrb_o[0] = store_dmem_wstrb;
+    end
+    store_dmem_ready = store_dmem_valid && !lsu_busy[0] && dmem_ready_i[0];
+    store_dmem_error = store_dmem_valid && !lsu_busy[0] && dmem_error_i[0];
   end
 
   always_comb begin
@@ -614,11 +704,13 @@ module mycore_core (
       exec_wb_n[wb_idx] = '0;
     for (int alu_idx = 0; alu_idx < FW; alu_idx++)
       exec_wb_n[alu_idx] = alu_wb[alu_idx];
-    exec_wb_n[4] = muldiv_wb;
-    exec_wb_n[5] = sq_execute_wb;
-    exec_wb_n[6] = lsu_wb;
-    exec_wb_n[7] = store_fault_wb;
-    exec_wb_n[9] = system_wb.rob.valid ? system_wb : csr_wb;
+    exec_wb_n[4] = sq_execute_wb[0];
+    exec_wb_n[5] = sq_execute_wb[1];
+    exec_wb_n[6] = lsu_wb[0];
+    exec_wb_n[7] = lsu_wb[1];
+    exec_wb_n[8] = muldiv_wb;
+    exec_wb_n[9] = store_fault_wb.rob.valid ? store_fault_wb :
+                   (system_wb.rob.valid ? system_wb : csr_wb);
     for (int wb_idx = 0; wb_idx < NWB; wb_idx++)
       rob_wb[wb_idx] = exec_wb_q[wb_idx].rob;
 
@@ -629,10 +721,14 @@ module mycore_core (
       if (alu_br[alu_idx].valid && alu_br[alu_idx].mispredict)
         perf_events[PERF_BRANCH_MISPRED] = 1'b1;
     end
-    if (mem_issue_valid && mem_issue_accept && (mem_issue_uop[0].d.fu == FU_LD))
-      perf_events[PERF_LOAD] = 1'b1;
-    if (mem_issue_valid && mem_issue_accept && (mem_issue_uop[0].d.fu == FU_ST))
-      perf_events[PERF_STORE] = 1'b1;
+    for (int mem_idx = 0; mem_idx < NLSU; mem_idx++) begin
+      if (mem_issue_valid[mem_idx] && mem_issue_accept[mem_idx] &&
+          (mem_issue_uop[mem_idx].d.fu == FU_LD))
+        perf_events[PERF_LOAD] = 1'b1;
+      if (mem_issue_valid[mem_idx] && mem_issue_accept[mem_idx] &&
+          (mem_issue_uop[mem_idx].d.fu == FU_ST))
+        perf_events[PERF_STORE] = 1'b1;
+    end
   end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -674,6 +770,8 @@ module mycore_core (
       end
       if (dispatch_fire)
         assert (fetch_consume && (|dispatch_valid));
+      assert (!mem_issue_accept[1] || mem_issue_accept[0]);
+      assert (!store_dmem_ready || !lsu_busy[0]);
     end
   end
 `endif

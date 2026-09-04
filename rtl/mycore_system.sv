@@ -21,24 +21,28 @@ module mycore_system (
 );
   import csr_pkg::*;
 
-  logic imem_valid, imem_ready;
-  logic [3:0] imem_error;
-  logic [31:0] imem_addr;
-  logic [127:0] imem_rdata;
-  logic [1:0] imem_size;
-  logic dmem_valid, dmem_write, dmem_ready, dmem_error;
-  logic [31:0] dmem_addr, dmem_wdata, dmem_rdata;
-  logic [1:0] dmem_size;
-  logic [3:0] dmem_wstrb;
+  logic imem_req_valid, imem_req_ready, imem_rsp_valid, imem_rsp_ready;
+  logic [3:0] imem_rsp_error;
+  logic [31:0] imem_req_addr;
+  logic [127:0] imem_rsp_rdata;
+  logic [1:0] imem_req_size;
+  logic [mycore_pkg::NLSU-1:0] dmem_valid, dmem_write, dmem_ready, dmem_error;
+  logic [31:0] dmem_addr [mycore_pkg::NLSU];
+  logic [31:0] dmem_wdata [mycore_pkg::NLSU];
+  logic [31:0] dmem_rdata [mycore_pkg::NLSU];
+  logic [1:0] dmem_size [mycore_pkg::NLSU];
+  logic [3:0] dmem_wstrb [mycore_pkg::NLSU];
   logic irq_software, irq_timer;
   logic [63:0] time_value;
   logic [7:0] pmpcfg [NPMP];
   logic [31:0] pmpaddr [NPMP];
 
   mycore_core u_core (
-    .clk_i, .rst_ni, .imem_valid_o(imem_valid), .imem_addr_o(imem_addr),
-    .imem_size_o(imem_size), .imem_ready_i(imem_ready), .imem_rdata_i(imem_rdata),
-    .imem_error_i(imem_error), .dmem_valid_o(dmem_valid),
+    .clk_i, .rst_ni, .imem_req_valid_o(imem_req_valid),
+    .imem_req_addr_o(imem_req_addr), .imem_req_size_o(imem_req_size),
+    .imem_req_ready_i(imem_req_ready), .imem_rsp_valid_i(imem_rsp_valid),
+    .imem_rsp_ready_o(imem_rsp_ready), .imem_rsp_rdata_i(imem_rsp_rdata),
+    .imem_rsp_error_i(imem_rsp_error), .dmem_valid_o(dmem_valid),
     .dmem_write_o(dmem_write), .dmem_addr_o(dmem_addr), .dmem_size_o(dmem_size),
     .dmem_wdata_o(dmem_wdata), .dmem_wstrb_o(dmem_wstrb),
     .dmem_ready_i(dmem_ready), .dmem_rdata_i(dmem_rdata), .dmem_error_i(dmem_error),
@@ -48,9 +52,12 @@ module mycore_system (
   );
 
   mycore_soc u_soc (
-    .clk_i, .rst_ni, .imem_valid_i(imem_valid), .imem_addr_i(imem_addr),
-    .imem_size_i(imem_size), .imem_ready_o(imem_ready), .imem_rdata_o(imem_rdata),
-    .imem_error_o(imem_error), .dmem_valid_i(dmem_valid), .dmem_write_i(dmem_write),
+    .clk_i, .rst_ni, .imem_req_valid_i(imem_req_valid),
+    .imem_req_addr_i(imem_req_addr), .imem_req_size_i(imem_req_size),
+    .imem_req_ready_o(imem_req_ready), .imem_rsp_valid_o(imem_rsp_valid),
+    .imem_rsp_ready_i(imem_rsp_ready), .imem_rsp_rdata_o(imem_rsp_rdata),
+    .imem_rsp_error_o(imem_rsp_error), .dmem_valid_i(dmem_valid),
+    .dmem_write_i(dmem_write),
     .dmem_addr_i(dmem_addr), .dmem_size_i(dmem_size), .dmem_wdata_i(dmem_wdata),
     .dmem_wstrb_i(dmem_wstrb), .dmem_ready_o(dmem_ready), .dmem_rdata_o(dmem_rdata),
     .dmem_error_o(dmem_error), .host_valid_i, .host_write_i, .host_addr_i,

@@ -23,8 +23,6 @@ module tb_backend_issue;
   logic [NREAD-1:0] prf_rready;
   logic [31:0] serial_prf_rdata;
   logic serial_prf_rready;
-  logic [31:0] mem_base_rdata, mem_data_rdata;
-  logic mem_base_rready, mem_data_rready;
   logic [FW-1:0] src1_ready, src2_ready, src3_ready;
 
   logic [ISSUE_WIDTH-1:0] issue_valid, issue_accept;
@@ -102,10 +100,7 @@ module tb_backend_issue;
     .alloc_uop_i(ren_uop), .wb_i(exec_wb), .wb_accepted_o(wb_accepted),
     .raddr_i(prf_raddr), .rdata_o(prf_rdata), .rready_o(prf_rready),
     .serial_raddr_i('0), .serial_rdata_o(serial_prf_rdata),
-    .serial_rready_o(serial_prf_rready), .mem_base_raddr_i('0),
-    .mem_data_raddr_i('0), .mem_base_rdata_o(mem_base_rdata),
-    .mem_data_rdata_o(mem_data_rdata), .mem_base_rready_o(mem_base_rready),
-    .mem_data_rready_o(mem_data_rready)
+    .serial_rready_o(serial_prf_rready)
   );
 
   issue_queue #(.DEPTH(IQ_DEPTH), .ISSUE_WIDTH(ISSUE_WIDTH)) u_iq (

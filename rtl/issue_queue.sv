@@ -50,6 +50,7 @@ module issue_queue #(
   logic dispatch_slot_found;
   integer dispatch_count, available_slots;
   integer best_slot, best_distance, candidate_distance;
+  logic strict_chain_ready;
 
   always_comb begin
     for (int entry_idx = 0; entry_idx < DEPTH; entry_idx++) begin
@@ -96,28 +97,35 @@ module issue_queue #(
     candidate_distance = 0;
     selected = '0;
     issue_valid_o = '0;
+    strict_chain_ready = 1'b1;
     for (int issue_idx = 0; issue_idx < ISSUE_WIDTH; issue_idx++) begin
       issue_uop_o[issue_idx] = '0;
       issue_slot[issue_idx] = '0;
     end
 
     if (!flush_i && !br_recover_fire_i && STRICT_ORDER) begin
-      best_slot = -1;
-      best_distance = 2 * NROB;
-      for (int entry_idx = 0; entry_idx < DEPTH; entry_idx++) begin
-        candidate_distance = int'(rob_distance(entry_wakeup[entry_idx].uop.rob_idx,
-                                                rob_head_i));
-        if (entry_wakeup[entry_idx].valid && (candidate_distance < best_distance)) begin
-          best_slot = entry_idx;
-          best_distance = candidate_distance;
+      for (int issue_idx = 0; issue_idx < ISSUE_WIDTH; issue_idx++) begin
+        best_slot = -1;
+        best_distance = 2 * NROB;
+        for (int entry_idx = 0; entry_idx < DEPTH; entry_idx++) begin
+          candidate_distance = int'(rob_distance(entry_wakeup[entry_idx].uop.rob_idx,
+                                                  rob_head_i));
+          if (entry_wakeup[entry_idx].valid && !selected[entry_idx] &&
+              (candidate_distance < best_distance)) begin
+            best_slot = entry_idx;
+            best_distance = candidate_distance;
+          end
         end
-      end
-      if ((best_slot >= 0) && entry_wakeup[best_slot].src1_ready &&
-          entry_wakeup[best_slot].src2_ready && entry_wakeup[best_slot].src3_ready) begin
-        issue_valid_o[0] = 1'b1;
-        issue_uop_o[0] = entry_wakeup[best_slot].uop;
-        issue_slot[0] = IW'(best_slot);
-        selected[best_slot] = 1'b1;
+        if (best_slot >= 0) begin
+          issue_uop_o[issue_idx] = entry_wakeup[best_slot].uop;
+          issue_slot[issue_idx] = IW'(best_slot);
+          selected[best_slot] = 1'b1;
+          strict_chain_ready = strict_chain_ready &&
+                               entry_wakeup[best_slot].src1_ready &&
+                               entry_wakeup[best_slot].src2_ready &&
+                               entry_wakeup[best_slot].src3_ready;
+          issue_valid_o[issue_idx] = strict_chain_ready;
+        end
       end
     end else if (!flush_i && !br_recover_fire_i) begin
       for (int issue_idx = 0; issue_idx < ISSUE_WIDTH; issue_idx++) begin
@@ -201,13 +209,14 @@ module issue_queue #(
   end
 
 `ifndef SYNTHESIS
-  initial begin
-    assert (!STRICT_ORDER || (ISSUE_WIDTH == 1))
-      else $error("strict issue queues support one issue port");
-  end
   always_ff @(posedge clk_i) begin
     if (rst_ni && dispatch_fire_i)
       assert (dispatch_ready_o) else $error("issue queue dispatch without capacity");
+    if (rst_ni && STRICT_ORDER) begin
+      for (int issue_idx = 1; issue_idx < ISSUE_WIDTH; issue_idx++)
+        assert (!issue_accept_i[issue_idx] || issue_accept_i[issue_idx-1])
+          else $error("strict issue accepted a younger candidate alone");
+    end
   end
 `endif
 endmodule
