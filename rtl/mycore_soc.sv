@@ -8,8 +8,8 @@ module mycore_soc (
   input  logic [31:0] imem_addr_i,
   input  logic [1:0]  imem_size_i,
   output logic        imem_ready_o,
-  output logic [31:0] imem_rdata_o,
-  output logic        imem_error_o,
+  output logic [127:0] imem_rdata_o,
+  output logic [3:0]  imem_error_o,
 
   input  logic        dmem_valid_i,
   input  logic        dmem_write_i,
@@ -45,13 +45,16 @@ module mycore_soc (
   logic imem_boot, imem_itim;
   logic dmem_boot, dmem_itim, dmem_dtim, dmem_clint;
   logic host_boot, host_itim, host_dtim, host_clint;
-  logic imem_pmp_matched, imem_pmp_allow;
+  logic [TIM_BANKS-1:0] imem_pmp_matched, imem_pmp_allow;
+  logic imem_access_pmp_matched, imem_access_pmp_allow;
   logic dmem_pmp_matched, dmem_pmp_allow;
   logic imem_pre_error, dmem_pre_error, host_pre_error;
+  logic itim_fetch_write_blocked;
   logic dmem_misaligned, dmem_bad_wstrb;
   logic [3:0] dmem_expected_wstrb;
 
-  logic [31:0] boot_imem_rdata, boot_dmem_rdata, boot_host_rdata;
+  logic [31:0] boot_imem_rdata [TIM_BANKS];
+  logic [31:0] boot_dmem_rdata, boot_host_rdata;
   logic [31:0] clint_cpu_rdata, clint_host_rdata;
   logic clint_cpu_error, clint_host_error;
 
@@ -83,10 +86,21 @@ module mycore_soc (
     return result;
   endfunction
 
-  pmp_checker u_imem_pmp (
+  for (genvar fetch_word = 0; fetch_word < TIM_BANKS; fetch_word++) begin : g_imem_pmp
+    pmp_checker u_imem_pmp (
+      .addr_i({imem_addr_i[31:4], 4'b0000} + 32'(fetch_word * 4)),
+      .size_i(2'd2), .access_r_i(1'b0), .access_w_i(1'b0),
+      .access_x_i(1'b1), .priv_m_i(pmp_priv_m_i), .pmpcfg_i, .pmpaddr_i,
+      .matched_o(imem_pmp_matched[fetch_word]),
+      .allow_o(imem_pmp_allow[fetch_word])
+    );
+  end
+
+  pmp_checker u_imem_access_pmp (
     .addr_i(imem_addr_i), .size_i(imem_size_i), .access_r_i(1'b0),
     .access_w_i(1'b0), .access_x_i(1'b1), .priv_m_i(pmp_priv_m_i),
-    .pmpcfg_i, .pmpaddr_i, .matched_o(imem_pmp_matched), .allow_o(imem_pmp_allow)
+    .pmpcfg_i, .pmpaddr_i, .matched_o(imem_access_pmp_matched),
+    .allow_o(imem_access_pmp_allow)
   );
 
   pmp_checker u_dmem_pmp (
@@ -95,11 +109,19 @@ module mycore_soc (
     .pmpcfg_i, .pmpaddr_i, .matched_o(dmem_pmp_matched), .allow_o(dmem_pmp_allow)
   );
 
-  bootrom u_bootrom_imem (.addr_i(imem_addr_i), .rdata_o(boot_imem_rdata));
+  for (genvar fetch_word = 0; fetch_word < TIM_BANKS; fetch_word++) begin : g_bootrom_imem
+    bootrom u_bootrom_imem (
+      .addr_i({imem_addr_i[31:4], 4'b0000} + 32'(fetch_word * 4)),
+      .rdata_o(boot_imem_rdata[fetch_word])
+    );
+  end
   bootrom u_bootrom_dmem (.addr_i(dmem_addr_i), .rdata_o(boot_dmem_rdata));
   bootrom u_bootrom_host (.addr_i(host_addr_i), .rdata_o(boot_host_rdata));
 
-  banked_sram_1r1w #(.BYTES(ITIM_BYTES), .BANKS(TIM_BANKS), .PORTS(TIM_PORTS)) u_itim (
+  banked_sram_1r1w #(
+    .BYTES(ITIM_BYTES), .BANKS(TIM_BANKS), .PORTS(TIM_PORTS),
+    .PRIORITY_READ_PORTS(TIM_BANKS)
+  ) u_itim (
     .clk_i, .rst_ni, .read_valid_i(itim_read_valid),
     .read_offset_i(itim_read_offset), .read_ready_o(itim_read_ready),
     .read_data_o(itim_read_data), .write_valid_i(itim_write_valid),
@@ -146,12 +168,14 @@ module mycore_soc (
       end
     endcase
     dmem_bad_wstrb = dmem_write_i && (dmem_wstrb_i != dmem_expected_wstrb);
-    imem_pre_error = (!imem_boot && !imem_itim) || imem_addr_i[0] || !imem_pmp_allow;
+    imem_pre_error = (!imem_boot && !imem_itim) || imem_addr_i[0];
     dmem_pre_error = (!dmem_boot && !dmem_itim && !dmem_dtim && !dmem_clint) ||
                      (dmem_boot && dmem_write_i) || dmem_misaligned ||
                      dmem_bad_wstrb || !dmem_pmp_allow;
     host_pre_error = (!host_boot && !host_itim && !host_dtim && !host_clint) ||
-                     (host_boot && host_write_i) || (host_addr_i[1:0] != 2'b00);
+                      (host_boot && host_write_i) || (host_addr_i[1:0] != 2'b00);
+    itim_fetch_write_blocked = (dmem_valid_i && dmem_write_i && dmem_itim) ||
+                               (host_valid_i && host_write_i && host_itim);
 
     itim_read_valid = '0;
     itim_write_valid = '0;
@@ -168,8 +192,13 @@ module mycore_soc (
       dtim_write_strb[port_idx] = '0;
     end
 
-    itim_read_valid[TIM_PORT_IF] = imem_valid_i && imem_itim && !imem_pre_error;
-    itim_read_offset[TIM_PORT_IF] = imem_addr_i - ITIM_BASE;
+    for (int fetch_word = 0; fetch_word < TIM_BANKS; fetch_word++) begin
+      itim_read_valid[TIM_PORT_IF0 + fetch_word] = imem_valid_i && imem_itim &&
+                                                    !imem_pre_error &&
+                                                    !itim_fetch_write_blocked;
+      itim_read_offset[TIM_PORT_IF0 + fetch_word] =
+        {imem_addr_i[31:4], 4'b0000} - ITIM_BASE + 32'(fetch_word * 4);
+    end
     itim_read_valid[TIM_PORT_LSU0] = dmem_valid_i && !dmem_write_i &&
                                       dmem_itim && !dmem_pre_error;
     itim_read_offset[TIM_PORT_LSU0] = dmem_addr_i - ITIM_BASE;
@@ -206,17 +235,26 @@ module mycore_soc (
 
     imem_ready_o = 1'b0;
     imem_rdata_o = '0;
-    imem_error_o = 1'b0;
+    imem_error_o = '0;
     if (imem_valid_i) begin
       if (imem_pre_error) begin
         imem_ready_o = 1'b1;
-        imem_error_o = 1'b1;
+        imem_error_o = '1;
       end else if (imem_boot) begin
         imem_ready_o = 1'b1;
-        imem_rdata_o = boot_imem_rdata;
+        imem_error_o = (~imem_pmp_allow) |
+                       ((4'b0001 << imem_addr_i[3:2]) &
+                        {4{!imem_access_pmp_allow}});
+        for (int fetch_word = 0; fetch_word < TIM_BANKS; fetch_word++)
+          imem_rdata_o[fetch_word*32 +: 32] = boot_imem_rdata[fetch_word];
       end else if (imem_itim) begin
-        imem_ready_o = itim_read_ready[TIM_PORT_IF];
-        imem_rdata_o = itim_read_data[TIM_PORT_IF];
+        imem_ready_o = &itim_read_ready[TIM_PORT_IF0 +: TIM_BANKS];
+        imem_error_o = (~imem_pmp_allow) |
+                       ((4'b0001 << imem_addr_i[3:2]) &
+                        {4{!imem_access_pmp_allow}});
+        for (int fetch_word = 0; fetch_word < TIM_BANKS; fetch_word++)
+          imem_rdata_o[fetch_word*32 +: 32] =
+            itim_read_data[TIM_PORT_IF0 + fetch_word];
       end
     end
 

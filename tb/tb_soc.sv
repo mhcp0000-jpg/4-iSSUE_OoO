@@ -11,8 +11,8 @@ module tb_soc;
   logic [31:0] imem_addr_i;
   logic [1:0] imem_size_i;
   logic imem_ready_o;
-  logic [31:0] imem_rdata_o;
-  logic imem_error_o;
+  logic [127:0] imem_rdata_o;
+  logic [3:0] imem_error_o;
   logic dmem_valid_i, dmem_write_i;
   logic [31:0] dmem_addr_i, dmem_wdata_i;
   logic [1:0] dmem_size_i;
@@ -117,8 +117,11 @@ module tb_soc;
       while (!imem_ready_o) begin
         @(posedge clk_i); #1;
       end
-      assert (imem_ready_o && (imem_error_o == expect_error));
-      data = imem_rdata_o;
+      assert (imem_ready_o &&
+              (imem_error_o[addr[3:2]] == expect_error));
+      imem_line_data = imem_rdata_o;
+      imem_line_error = imem_error_o;
+      data = imem_rdata_o[addr[3:2]*32 +: 32];
       imem_valid_i = 1'b0;
       #1;
     end
@@ -167,6 +170,8 @@ module tb_soc;
   endtask
 
   logic [31:0] data;
+  logic [127:0] imem_line_data;
+  logic [3:0] imem_line_error;
 
   initial begin
     for (int pmp_idx = 0; pmp_idx < NPMP; pmp_idx++) begin
@@ -205,6 +210,12 @@ module tb_soc;
     // Host ELF writes are immediately visible to instruction and data ports.
     host_write(ITIM_BASE, 32'h1122_3344, 4'b1111, 0);
     imem_read(ITIM_BASE, data, 0); assert (data == 32'h1122_3344);
+    host_write(ITIM_BASE + 4, 32'h5566_7788, 4'hf, 0);
+    host_write(ITIM_BASE + 8, 32'h99aa_bbcc, 4'hf, 0);
+    host_write(ITIM_BASE + 12, 32'hddee_ff00, 4'hf, 0);
+    imem_read(ITIM_BASE + 8, data, 0);
+    assert (data == 32'h99aa_bbcc);
+    assert (imem_line_data == 128'hddee_ff00_99aa_bbcc_5566_7788_1122_3344);
     host_write(ITIM_BASE, 32'haabb_ccdd, 4'b0101, 0);
     dmem_read(ITIM_BASE, data, 0); assert (data == 32'h11bb_33dd);
     host_write(ITIM_BASE + ITIM_BYTES - 4, 32'hc001_c0de, 4'hf, 0);
@@ -266,6 +277,14 @@ module tb_soc;
     imem_read(ITIM_BASE, data, 1);
     pmpcfg_i[1] = 8'h8d; // locked TOR, read and execute
     imem_read(ITIM_BASE, data, 0);
+    pmpaddr_i[1] = (ITIM_BASE + 32'hf4) >> 2;
+    pmpaddr_i[2] = (ITIM_BASE + 32'h100) >> 2;
+    pmpcfg_i[2] = 8'h89;
+    imem_read(ITIM_BASE + 32'hf0, data, 0);
+    assert (imem_line_error[3:1] == 3'b111);
+    imem_read(ITIM_BASE + 32'hf4, data, 1);
+    pmpcfg_i[2] = '0;
+    pmpaddr_i[1] = (ITIM_BASE + 32'h100) >> 2;
     imem_size_i = 2'd1;
     imem_read(ITIM_BASE + 32'hfe, data, 0);
     imem_size_i = 2'd2;

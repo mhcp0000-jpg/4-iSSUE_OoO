@@ -8,8 +8,8 @@ module mycore_core (
   output logic [31:0] imem_addr_o,
   output logic [1:0]  imem_size_o,
   input  logic        imem_ready_i,
-  input  logic [31:0] imem_rdata_i,
-  input  logic        imem_error_i,
+  input  logic [127:0] imem_rdata_i,
+  input  logic [3:0]  imem_error_i,
 
   output logic        dmem_valid_o,
   output logic        dmem_write_o,
@@ -36,10 +36,10 @@ module mycore_core (
 
   localparam int INT_RBASE = NREAD_DISPATCH;
 
-  fetch_inst_t fetch_inst;
-  dec_uop_t decoded_uop, dec_bundle [FW];
-  logic rvc_illegal, fetch_fault, fetch_cross_word;
-  logic fetch_consume, frontend_redirect;
+  fetch_inst_t fetch_inst [FW];
+  dec_uop_t decoded_uop [FW], dec_bundle [FW];
+  logic [FW-1:0] rvc_illegal, fetch_fault, fetch_cross_word;
+  logic fetch_consume, frontend_redirect, frontend_invalidate;
   logic [31:0] frontend_redirect_pc, fetch_pc;
 
   ren_uop_t ren_uop [FW];
@@ -140,65 +140,74 @@ module mycore_core (
   logic control_flush_q;
   logic [31:0] control_target_q;
 
-  frontend_single u_frontend (
+  frontend_four u_frontend (
     .clk_i, .rst_ni, .consume_i(fetch_consume), .sleeping_i(csr_sleeping),
+    .invalidate_i(frontend_invalidate),
     .redirect_valid_i(frontend_redirect), .redirect_pc_i(frontend_redirect_pc),
+    .recover_valid_i(rob_recover_fire), .recover_ras_sp_i(branch_q.ras_sp),
+    .recover_ras_top_i(branch_q.ras_top),
     .imem_valid_o, .imem_addr_o, .imem_size_o, .imem_ready_i, .imem_rdata_i,
     .imem_error_i, .fetch_o(fetch_inst), .rvc_illegal_o(rvc_illegal),
     .fetch_fault_o(fetch_fault), .cross_word_o(fetch_cross_word), .pc_o(fetch_pc)
   );
 
-  decoder u_decoder (.fi(fetch_inst), .rvc_illegal, .u(decoded_uop));
+  for (genvar lane_idx = 0; lane_idx < FW; lane_idx++) begin : g_decoder
+    decoder u_decoder (
+      .fi(fetch_inst[lane_idx]), .rvc_illegal(rvc_illegal[lane_idx]),
+      .u(decoded_uop[lane_idx])
+    );
+  end
 
   always_comb begin
-    for (int lane_idx = 0; lane_idx < FW; lane_idx++)
-      dec_bundle[lane_idx] = '0;
-    dec_bundle[0] = decoded_uop;
-    if (fetch_fault) begin
-      dec_bundle[0] = '0;
-      dec_bundle[0].valid = 1'b1;
-      dec_bundle[0].pc = fetch_pc;
-      dec_bundle[0].inst = fetch_inst.inst;
-      dec_bundle[0].fu = FU_CSR;
-      dec_bundle[0].excp = 1'b1;
-      dec_bundle[0].cause = EXC_IACCESS;
-      dec_bundle[0].tval = fetch_pc;
-    end else if (fetch_cross_word) begin
-      dec_bundle[0].fu = FU_CSR;
-      dec_bundle[0].use1 = 1'b0;
-      dec_bundle[0].use2 = 1'b0;
-      dec_bundle[0].use3 = 1'b0;
-      dec_bundle[0].rd_valid = 1'b0;
-      dec_bundle[0].is_branch = 1'b0;
-      dec_bundle[0].excp = 1'b1;
-      dec_bundle[0].cause = EXC_ILLEGAL;
-      dec_bundle[0].tval = fetch_inst.inst;
-    end
-    if (dec_bundle[0].valid && !fetch_fault &&
-        ((dec_bundle[0].fu == FU_FPU) || dec_bundle[0].rd[5] ||
-         (dec_bundle[0].use1 && dec_bundle[0].rs1[5]) ||
-         (dec_bundle[0].use2 && dec_bundle[0].rs2[5]) ||
-         (dec_bundle[0].use3 && dec_bundle[0].rs3[5]))) begin
-      dec_bundle[0].fu = FU_CSR;
-      dec_bundle[0].use1 = 1'b0;
-      dec_bundle[0].use2 = 1'b0;
-      dec_bundle[0].use3 = 1'b0;
-      dec_bundle[0].rd_valid = 1'b0;
-      dec_bundle[0].is_branch = 1'b0;
-      dec_bundle[0].excp = 1'b1;
-      dec_bundle[0].cause = EXC_ILLEGAL;
-      dec_bundle[0].tval = fetch_inst.inst;
-    end
-    if (dec_bundle[0].valid && !fetch_fault && fetch_inst.rvc) begin
-      dec_bundle[0].fu = FU_CSR;
-      dec_bundle[0].use1 = 1'b0;
-      dec_bundle[0].use2 = 1'b0;
-      dec_bundle[0].use3 = 1'b0;
-      dec_bundle[0].rd_valid = 1'b0;
-      dec_bundle[0].is_branch = 1'b0;
-      dec_bundle[0].excp = 1'b1;
-      dec_bundle[0].cause = EXC_ILLEGAL;
-      dec_bundle[0].tval = {16'd0, fetch_inst.raw16};
+    for (int lane_idx = 0; lane_idx < FW; lane_idx++) begin
+      dec_bundle[lane_idx] = decoded_uop[lane_idx];
+      if (fetch_fault[lane_idx]) begin
+        dec_bundle[lane_idx] = '0;
+        dec_bundle[lane_idx].valid = 1'b1;
+        dec_bundle[lane_idx].pc = fetch_inst[lane_idx].pc;
+        dec_bundle[lane_idx].inst = fetch_inst[lane_idx].inst;
+        dec_bundle[lane_idx].fu = FU_CSR;
+        dec_bundle[lane_idx].excp = 1'b1;
+        dec_bundle[lane_idx].cause = EXC_IACCESS;
+        dec_bundle[lane_idx].tval = fetch_inst[lane_idx].pc;
+      end else if (fetch_cross_word[lane_idx]) begin
+        dec_bundle[lane_idx].fu = FU_CSR;
+        dec_bundle[lane_idx].use1 = 1'b0;
+        dec_bundle[lane_idx].use2 = 1'b0;
+        dec_bundle[lane_idx].use3 = 1'b0;
+        dec_bundle[lane_idx].rd_valid = 1'b0;
+        dec_bundle[lane_idx].is_branch = 1'b0;
+        dec_bundle[lane_idx].excp = 1'b1;
+        dec_bundle[lane_idx].cause = EXC_ILLEGAL;
+        dec_bundle[lane_idx].tval = fetch_inst[lane_idx].inst;
+      end
+      if (dec_bundle[lane_idx].valid && !fetch_fault[lane_idx] &&
+          ((dec_bundle[lane_idx].fu == FU_FPU) || dec_bundle[lane_idx].rd[5] ||
+           (dec_bundle[lane_idx].use1 && dec_bundle[lane_idx].rs1[5]) ||
+           (dec_bundle[lane_idx].use2 && dec_bundle[lane_idx].rs2[5]) ||
+           (dec_bundle[lane_idx].use3 && dec_bundle[lane_idx].rs3[5]))) begin
+        dec_bundle[lane_idx].fu = FU_CSR;
+        dec_bundle[lane_idx].use1 = 1'b0;
+        dec_bundle[lane_idx].use2 = 1'b0;
+        dec_bundle[lane_idx].use3 = 1'b0;
+        dec_bundle[lane_idx].rd_valid = 1'b0;
+        dec_bundle[lane_idx].is_branch = 1'b0;
+        dec_bundle[lane_idx].excp = 1'b1;
+        dec_bundle[lane_idx].cause = EXC_ILLEGAL;
+        dec_bundle[lane_idx].tval = fetch_inst[lane_idx].inst;
+      end
+      if (dec_bundle[lane_idx].valid && !fetch_fault[lane_idx] &&
+          fetch_inst[lane_idx].rvc) begin
+        dec_bundle[lane_idx].fu = FU_CSR;
+        dec_bundle[lane_idx].use1 = 1'b0;
+        dec_bundle[lane_idx].use2 = 1'b0;
+        dec_bundle[lane_idx].use3 = 1'b0;
+        dec_bundle[lane_idx].rd_valid = 1'b0;
+        dec_bundle[lane_idx].is_branch = 1'b0;
+        dec_bundle[lane_idx].excp = 1'b1;
+        dec_bundle[lane_idx].cause = EXC_ILLEGAL;
+        dec_bundle[lane_idx].tval = {16'd0, fetch_inst[lane_idx].raw16};
+      end
     end
   end
 
@@ -222,7 +231,7 @@ module mycore_core (
     backend_ready = rob_ready && int_iq_ready && mem_iq_ready && fp_iq_ready &&
                      sq_dispatch_ready && !global_flush && !trap_take &&
                      !csr_interrupt_pending;
-    fetch_consume = dispatch_fire && dispatch_valid[0];
+    fetch_consume = dispatch_fire && (|dispatch_valid);
   end
 
   rename_stage u_rename (
@@ -534,8 +543,15 @@ module mycore_core (
   assign trap_take = rob_trap_valid || interrupt_take;
   assign global_flush = control_flush_q;
   assign control_serial_commit = rob_commit_valid[0] &&
-                                 ((rob_commit_uop[0].d.fu == FU_CSR) ||
-                                  (rob_commit_uop[0].d.fu == FU_NONE));
+                                  ((rob_commit_uop[0].d.fu == FU_CSR) ||
+                                   (rob_commit_uop[0].d.fu == FU_NONE));
+  assign frontend_invalidate = control_serial_commit &&
+                               (rob_commit_uop[0].d.fu == FU_CSR) &&
+                               ((rob_commit_uop[0].d.op == SYS_FENCEI) ||
+                                ((rob_commit_uop[0].d.csr_addr >= CSR_PMPCFG0) &&
+                                 (rob_commit_uop[0].d.csr_addr <= CSR_PMPCFG3)) ||
+                                ((rob_commit_uop[0].d.csr_addr >= CSR_PMPADDR0) &&
+                                 (rob_commit_uop[0].d.csr_addr <= CSR_PMPADDR15)));
   assign pipeline_issue_block = trap_take || control_flush_q ||
                                 (rob_serial_valid &&
                                  ((rob_serial_uop.d.fu == FU_CSR) ||
@@ -646,4 +662,19 @@ module mycore_core (
 
   assign debug_pc_o = fetch_pc;
   assign debug_rob_occupancy_o = rob_occupancy;
+
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (rst_ni) begin
+      for (int lane_idx = 1; lane_idx < FW; lane_idx++) begin
+        assert (!dec_bundle[lane_idx].valid || dec_bundle[lane_idx-1].valid);
+        assert (!dispatch_valid[lane_idx] || dispatch_valid[lane_idx-1]);
+        if (dec_bundle[lane_idx].valid)
+          assert (dec_bundle[lane_idx].pc == dec_bundle[lane_idx-1].pc + 32'd4);
+      end
+      if (dispatch_fire)
+        assert (fetch_consume && (|dispatch_valid));
+    end
+  end
+`endif
 endmodule

@@ -3,7 +3,8 @@
 module banked_sram_1r1w #(
   parameter int BYTES = 128 * 1024,
   parameter int BANKS = 4,
-  parameter int PORTS = 4
+  parameter int PORTS = 4,
+  parameter int PRIORITY_READ_PORTS = 0
 ) (
   input  logic                  clk_i,
   input  logic                  rst_ni,
@@ -79,6 +80,21 @@ module banked_sram_1r1w #(
     // Each bank independently accepts one read and one write.
     for (int bank_idx = 0; bank_idx < BANKS; bank_idx++) begin
       selected_port = -1;
+      for (int priority_port = 0; priority_port < PRIORITY_READ_PORTS; priority_port++) begin
+        candidate_has_write = 1'b0;
+        for (int write_port = 0; write_port < PORTS; write_port++) begin
+          if (rst_ni && write_valid_i[write_port] &&
+              (write_offset_i[write_port][BW+1:2] == BW'(bank_idx)) &&
+              (write_offset_i[write_port][RAW+BW+1:BW+2] ==
+               read_offset_i[priority_port][RAW+BW+1:BW+2]))
+            candidate_has_write = 1'b1;
+        end
+        if ((selected_port < 0) && rst_ni && read_valid_i[priority_port] &&
+            !read_busy_n[priority_port] && !read_ready_o[priority_port] &&
+            !candidate_has_write &&
+            (read_offset_i[priority_port][BW+1:2] == BW'(bank_idx)))
+          selected_port = priority_port;
+      end
       for (int priority_idx = 0; priority_idx < PORTS; priority_idx++) begin
         candidate_port = (int'(read_rr_q[bank_idx]) + priority_idx) % PORTS;
         candidate_has_write = 1'b0;
@@ -170,6 +186,7 @@ module banked_sram_1r1w #(
   initial begin
     assert ((BANKS & (BANKS - 1)) == 0);
     assert ((WORDS % BANKS) == 0);
+    assert (PRIORITY_READ_PORTS <= PORTS);
   end
 `endif
 endmodule

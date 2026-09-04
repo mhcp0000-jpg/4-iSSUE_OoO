@@ -20,7 +20,8 @@ The authoritative constants and address-decode helpers are in
 ## Implemented
 
 - RV32IM execution; F/C decode exists but is not advertised until execution support lands
-- Four-wide speculative rename with a 128-entry unified physical register map
+- Four-wide fetch, decode, speculative rename, dispatch, integer issue, and commit
+- 128-bit four-bank fetch lines with static branch prediction and a 16-entry RAS
 - Eight branch checkpoints with recovery epochs
 - 64-entry, four-wide reorder buffer with ten completion ports
 - Precise ROB exceptions, serialized commit, and branch recovery

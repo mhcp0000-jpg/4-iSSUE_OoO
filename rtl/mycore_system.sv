@@ -21,8 +21,10 @@ module mycore_system (
 );
   import csr_pkg::*;
 
-  logic imem_valid, imem_ready, imem_error;
-  logic [31:0] imem_addr, imem_rdata;
+  logic imem_valid, imem_ready;
+  logic [3:0] imem_error;
+  logic [31:0] imem_addr;
+  logic [127:0] imem_rdata;
   logic [1:0] imem_size;
   logic dmem_valid, dmem_write, dmem_ready, dmem_error;
   logic [31:0] dmem_addr, dmem_wdata, dmem_rdata;

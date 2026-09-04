@@ -7,7 +7,7 @@ rtl/banked_sram_1r1w.sv
 rtl/clint.sv
 rtl/pmp_checker.sv
 rtl/rvc_expand.sv
-rtl/frontend_single.sv
+rtl/frontend_four.sv
 rtl/decoder.sv
 rtl/rename_stage.sv
 rtl/rob.sv
