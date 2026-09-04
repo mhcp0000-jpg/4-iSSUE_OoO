@@ -38,6 +38,7 @@ tools/msys64/usr/bin/bash.exe scripts/run_backend_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_soc_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_csr_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_pmp_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_elf_load_tb.sh
 ```
 
 Ordered synthesizable RTL sources are listed in `rtl/files.f`.
