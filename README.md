@@ -54,6 +54,8 @@ tools/msys64/usr/bin/bash.exe scripts/run_store_path_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_core_system_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_sram_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_dpi_core_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_coremark_tb.sh
 ```
 
 Ordered synthesizable RTL sources are listed in `rtl/files.f`.
+The one-iteration CoreMark baseline is recorded in `COREMARK.md`.

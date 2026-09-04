@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR=${BASH_SOURCE[0]%/*}
 ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 BUILD="$ROOT/build/core_system_tb_vlt"
+cd "$ROOT"
 
 export PATH="$ROOT/tools/msys64/ucrt64/bin:/usr/bin:$PATH"
 mkdir -p "$BUILD"
