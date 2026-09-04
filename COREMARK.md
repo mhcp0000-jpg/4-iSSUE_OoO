@@ -36,9 +36,10 @@ cycles. Future performance comparisons should continue to use one iteration.
 | --- | ---: | ---: | ---: |
 | Static not-taken baseline | 654,795 | 1.527196 | - |
 | Backward-taken/JAL prediction | 599,817 | 1.667175 | -8.4% cycles |
+| 8-entry return-address stack | 595,444 | 1.679419 | -0.7% cycles |
 
-The simple ELF test improved from 1,454 to 1,241 execution cycles with the
-same predictor change.
+The simple ELF test improved from 1,454 to 1,239 execution cycles with these
+predictor changes.
 
 Run with `scripts/run_coremark_tb.sh`. Use `scripts/fetch_coremark.sh` to obtain
 the pinned benchmark source.

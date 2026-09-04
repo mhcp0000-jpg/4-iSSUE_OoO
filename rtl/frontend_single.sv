@@ -25,6 +25,9 @@ module frontend_single (
 );
   import mycore_pkg::*;
 
+  localparam int RAS_DEPTH = 8;
+  localparam int RAS_PTR_W = $clog2(RAS_DEPTH);
+
   logic [31:0] pc_q;
   logic [15:0] halfword;
   logic [31:0] expanded;
@@ -32,6 +35,10 @@ module frontend_single (
   logic predicted_taken;
   logic [31:0] predicted_target;
   logic [31:0] branch_imm, jump_imm;
+  logic [31:0] ras_q [0:RAS_DEPTH-1];
+  logic [RAS_PTR_W-1:0] ras_sp_q;
+  logic [RAS_PTR_W:0] ras_count_q;
+  logic is_call, is_return;
 
   rvc_expand u_expand (.c(halfword), .o(expanded), .illegal(expanded_illegal));
 
@@ -45,6 +52,17 @@ module frontend_single (
     jump_imm = {{11{imem_rdata_i[31]}}, imem_rdata_i[31],
                 imem_rdata_i[19:12], imem_rdata_i[20],
                 imem_rdata_i[30:21], 1'b0};
+    is_call = !is_rvc &&
+              ((imem_rdata_i[6:0] == 7'b1101111) ||
+               (imem_rdata_i[6:0] == 7'b1100111)) &&
+              ((imem_rdata_i[11:7] == 5'd1) ||
+               (imem_rdata_i[11:7] == 5'd5));
+    is_return = !is_rvc && (imem_rdata_i[6:0] == 7'b1100111) &&
+                (imem_rdata_i[14:12] == 3'b000) &&
+                (imem_rdata_i[11:7] == 5'd0) &&
+                ((imem_rdata_i[19:15] == 5'd1) ||
+                 (imem_rdata_i[19:15] == 5'd5)) &&
+                (imem_rdata_i[31:20] == 12'd0);
     predicted_taken = 1'b0;
     predicted_target = pc_q + (is_rvc ? 32'd2 : 32'd4);
     if (!is_rvc && (imem_rdata_i[6:0] == 7'b1101111)) begin
@@ -53,6 +71,9 @@ module frontend_single (
     end else if (!is_rvc && (imem_rdata_i[6:0] == 7'b1100011) && branch_imm[31]) begin
       predicted_taken = 1'b1;
       predicted_target = pc_q + branch_imm;
+    end else if (is_return && (ras_count_q != 0)) begin
+      predicted_taken = 1'b1;
+      predicted_target = ras_q[ras_sp_q - 1'b1];
     end
 
     imem_valid_o = !sleeping_i;
@@ -73,12 +94,24 @@ module frontend_single (
   end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni)
+    if (!rst_ni) begin
       pc_q <= RESET_PC;
-    else if (redirect_valid_i)
+      ras_sp_q <= '0;
+      ras_count_q <= '0;
+    end else if (redirect_valid_i) begin
       pc_q <= redirect_pc_i;
-    else if (consume_i)
+    end else if (consume_i) begin
       pc_q <= predicted_taken ? predicted_target :
               pc_q + (is_rvc ? 32'd2 : 32'd4);
+      if (is_return && (ras_count_q != 0)) begin
+        ras_sp_q <= ras_sp_q - 1'b1;
+        ras_count_q <= ras_count_q - 1'b1;
+      end else if (is_call) begin
+        ras_q[ras_sp_q] <= pc_q + 32'd4;
+        ras_sp_q <= ras_sp_q + 1'b1;
+        if (!ras_count_q[RAS_PTR_W])
+          ras_count_q <= ras_count_q + 1'b1;
+      end
+    end
   end
 endmodule
