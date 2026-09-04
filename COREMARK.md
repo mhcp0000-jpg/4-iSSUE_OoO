@@ -26,9 +26,19 @@ cycles. Future performance comparisons should continue to use one iteration.
 ## Current Bottlenecks
 
 - The frontend supplies one instruction rather than four.
-- Every taken branch is currently predicted not taken.
+- Forward taken branches and indirect JALR targets still mispredict.
 - The memory issue queue is conservative and single-issue.
 - Synchronous SRAM reads add latency that is not yet hidden by fetch buffering.
+
+## Optimization History
+
+| Configuration | Timed cycles | CoreMark/MHz | Change |
+| --- | ---: | ---: | ---: |
+| Static not-taken baseline | 654,795 | 1.527196 | - |
+| Backward-taken/JAL prediction | 599,817 | 1.667175 | -8.4% cycles |
+
+The simple ELF test improved from 1,454 to 1,241 execution cycles with the
+same predictor change.
 
 Run with `scripts/run_coremark_tb.sh`. Use `scripts/fetch_coremark.sh` to obtain
 the pinned benchmark source.
