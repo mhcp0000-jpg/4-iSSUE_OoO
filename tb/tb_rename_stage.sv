@@ -110,6 +110,7 @@ module tb_rename_stage;
     #1;
     assert (dec_ready_o);
     assert (dispatch_fire_o);
+    assert (dispatch_valid_o == 4'b1111);
     assert (ren_o[0].pdst == 7'd64 && ren_o[0].prev_pdst == 7'd10);
     assert (ren_o[1].ps1 == 7'd64 && ren_o[1].pdst == 7'd65);
     assert (ren_o[2].pdst == 7'd66 && ren_o[2].prev_pdst == 7'd64);

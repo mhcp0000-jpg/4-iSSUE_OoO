@@ -7,6 +7,8 @@ package soc_pkg;
   localparam logic [31:0] CLINT_BASE = 32'h0200_0000;
   localparam int unsigned CLINT_BYTES = 64 * 1024;
   localparam logic [31:0] CLINT_MSIP_ADDR = CLINT_BASE;
+  localparam logic [31:0] CLINT_MTIMECMP_ADDR = CLINT_BASE + 32'h0000_4000;
+  localparam logic [31:0] CLINT_MTIME_ADDR = CLINT_BASE + 32'h0000_bff8;
 
   localparam logic [31:0] ITIM_BASE = 32'h8000_0000;
   localparam int unsigned ITIM_BYTES = 128 * 1024;

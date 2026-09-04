@@ -2,17 +2,20 @@
 
 module tb_soc;
   import soc_pkg::*;
+  import csr_pkg::NPMP;
   import mycore_pkg::RESET_PC;
 
   logic clk_i;
   logic rst_ni;
   logic imem_valid_i;
   logic [31:0] imem_addr_i;
+  logic [1:0] imem_size_i;
   logic imem_ready_o;
   logic [31:0] imem_rdata_o;
   logic imem_error_o;
   logic dmem_valid_i, dmem_write_i;
   logic [31:0] dmem_addr_i, dmem_wdata_i;
+  logic [1:0] dmem_size_i;
   logic [3:0] dmem_wstrb_i;
   logic dmem_ready_o;
   logic [31:0] dmem_rdata_o;
@@ -24,7 +27,12 @@ module tb_soc;
   logic [31:0] host_rdata_o;
   logic host_error_o;
   logic irq_software_o;
+  logic irq_timer_o;
+  logic [63:0] time_o;
   logic [63:0] tohost_o, fromhost_o;
+  logic pmp_priv_m_i;
+  logic [7:0] pmpcfg_i [NPMP];
+  logic [31:0] pmpaddr_i [NPMP];
 
   mycore_soc dut (.*);
 
@@ -37,11 +45,14 @@ module tb_soc;
     begin
       imem_valid_i = 1'b0;
       imem_addr_i = '0;
+      imem_size_i = 2'd2;
       dmem_valid_i = 1'b0;
       dmem_write_i = 1'b0;
       dmem_addr_i = '0;
       dmem_wdata_i = '0;
       dmem_wstrb_i = '0;
+      dmem_size_i = 2'd2;
+      pmp_priv_m_i = 1'b1;
       host_valid_i = 1'b0;
       host_write_i = 1'b0;
       host_addr_i = '0;
@@ -149,6 +160,10 @@ module tb_soc;
   logic [31:0] data;
 
   initial begin
+    for (int pmp_idx = 0; pmp_idx < NPMP; pmp_idx++) begin
+      pmpcfg_i[pmp_idx] = '0;
+      pmpaddr_i[pmp_idx] = '0;
+    end
     clear_inputs();
     rst_ni = 1'b0;
     repeat (2) @(posedge clk_i);
@@ -158,7 +173,7 @@ module tb_soc;
     assert (RESET_PC == BOOTROM_BASE);
     assert (ITIM_BASE + ITIM_BYTES == DTIM_BASE);
     assert (TOHOST_ADDR == DTIM_BASE && FROMHOST_ADDR == DTIM_BASE + 8);
-    assert (!irq_software_o && tohost_o == 0 && fromhost_o == 0);
+    assert (!irq_software_o && !irq_timer_o && tohost_o == 0 && fromhost_o == 0);
 
     // Boot ROM installs mtvec=ITIM_BASE, enables MSIE/MIE, then loops in WFI.
     imem_read(BOOTROM_BASE + 0, data, 0);  assert (data == 32'h8000_02b7);
@@ -189,6 +204,11 @@ module tb_soc;
     host_read(DTIM_BASE + 16, data, 0); assert (data == 32'hdead_beef);
     dmem_write(DTIM_BASE + 17, 32'hffff_ffff, 4'hf, 1);
     host_read(DTIM_BASE + 16, data, 0); assert (data == 32'hdead_beef);
+    dmem_size_i = 2'd0;
+    dmem_write(DTIM_BASE + 19, 32'haa00_0000, 4'b1000, 0);
+    dmem_write(DTIM_BASE + 18, 32'hffff_ffff, 4'b1111, 1);
+    dmem_size_i = 2'd2;
+    host_read(DTIM_BASE + 16, data, 0); assert (data == 32'haaad_beef);
 
     // Host raises MSIP after loading; payload code clears it through dmem.
     host_write(CLINT_MSIP_ADDR, 32'd1, 4'hf, 0);
@@ -197,12 +217,41 @@ module tb_soc;
     dmem_write(CLINT_MSIP_ADDR, 32'd0, 4'hf, 0);
     assert (!irq_software_o);
 
+    // Standard CLINT mtime/mtimecmp registers drive MTIP.
+    host_write(CLINT_MTIMECMP_ADDR, 32'd0, 4'hf, 0);
+    host_write(CLINT_MTIMECMP_ADDR + 4, 32'd0, 4'hf, 0);
+    assert (irq_timer_o);
+    host_write(CLINT_MTIMECMP_ADDR, 32'hffff_ffff, 4'hf, 0);
+    host_write(CLINT_MTIMECMP_ADDR + 4, 32'hffff_ffff, 4'hf, 0);
+    assert (!irq_timer_o && time_o != 0);
+
     // ROM writes and unmapped accesses report errors without modifying state.
     host_write(BOOTROM_BASE, 32'hffff_ffff, 4'hf, 1);
     imem_read(BOOTROM_BASE, data, 0); assert (data == 32'h8000_02b7);
     host_read(32'h4000_0000, data, 1);
     dmem_read(32'h4000_0000, data, 1);
     imem_read(ITIM_BASE + 1, data, 1);
+
+    // Locked PMP permissions apply to CPU ports while the host still loads.
+    pmpaddr_i[0] = DTIM_BASE >> 2;
+    pmpaddr_i[1] = (DTIM_BASE + 32'h100) >> 2;
+    pmpcfg_i[1] = 8'h89; // locked TOR, read-only
+    dmem_read(DTIM_BASE + 16, data, 0);
+    dmem_write(DTIM_BASE + 16, 32'h1111_2222, 4'hf, 1);
+    host_read(DTIM_BASE + 16, data, 0); assert (data == 32'haaad_beef);
+    host_write(DTIM_BASE + 16, 32'h3333_4444, 4'hf, 0);
+    host_read(DTIM_BASE + 16, data, 0); assert (data == 32'h3333_4444);
+
+    pmpaddr_i[0] = ITIM_BASE >> 2;
+    pmpaddr_i[1] = (ITIM_BASE + 32'h100) >> 2;
+    pmpcfg_i[1] = 8'h89;
+    imem_read(ITIM_BASE, data, 1);
+    pmpcfg_i[1] = 8'h8d; // locked TOR, read and execute
+    imem_read(ITIM_BASE, data, 0);
+    imem_size_i = 2'd1;
+    imem_read(ITIM_BASE + 32'hfe, data, 0);
+    imem_size_i = 2'd2;
+    imem_read(ITIM_BASE + 32'hfe, data, 1);
 
     $display("PASS: tb_soc");
     $finish;

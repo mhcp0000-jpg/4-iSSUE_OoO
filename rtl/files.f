@@ -1,10 +1,13 @@
 rtl/soc_pkg.sv
+rtl/csr_pkg.sv
 rtl/mycore_pkg.sv
 rtl/bootrom.sv
 rtl/tim_ram.sv
 rtl/clint.sv
+rtl/pmp_checker.sv
 rtl/rvc_expand.sv
 rtl/decoder.sv
 rtl/rename_stage.sv
 rtl/rob.sv
+rtl/csr_file.sv
 rtl/mycore_soc.sv

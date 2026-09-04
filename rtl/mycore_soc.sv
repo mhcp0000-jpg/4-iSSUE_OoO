@@ -8,6 +8,7 @@ module mycore_soc (
 
   input  logic        imem_valid_i,
   input  logic [31:0] imem_addr_i,
+  input  logic [1:0]  imem_size_i,
   output logic        imem_ready_o,
   output logic [31:0] imem_rdata_o,
   output logic        imem_error_o,
@@ -15,6 +16,7 @@ module mycore_soc (
   input  logic        dmem_valid_i,
   input  logic        dmem_write_i,
   input  logic [31:0] dmem_addr_i,
+  input  logic [1:0]  dmem_size_i,
   input  logic [31:0] dmem_wdata_i,
   input  logic [3:0]  dmem_wstrb_i,
   output logic        dmem_ready_o,
@@ -30,7 +32,13 @@ module mycore_soc (
   output logic [31:0] host_rdata_o,
   output logic        host_error_o,
 
+  input  logic        pmp_priv_m_i,
+  input  logic [7:0]  pmpcfg_i [csr_pkg::NPMP],
+  input  logic [31:0] pmpaddr_i [csr_pkg::NPMP],
+
   output logic        irq_software_o,
+  output logic        irq_timer_o,
+  output logic [63:0] time_o,
   output logic [63:0] tohost_o,
   output logic [63:0] fromhost_o
 );
@@ -46,6 +54,11 @@ module mycore_soc (
   logic clint_cpu_error, clint_host_error;
   logic [63:0] unused_itim_probe0, unused_itim_probe1;
   logic [31:0] zero_if_rdata;
+  logic imem_pmp_matched, imem_pmp_allow;
+  logic dmem_pmp_matched, dmem_pmp_allow;
+  logic dmem_misaligned;
+  logic [3:0] dmem_expected_wstrb;
+  logic dmem_bad_wstrb;
 
   always_comb begin
     imem_boot = imem_valid_i && addr_is_bootrom(imem_addr_i);
@@ -59,21 +72,42 @@ module mycore_soc (
     host_dtim = host_valid_i && addr_is_dtim(host_addr_i);
     host_clint = host_valid_i && addr_is_clint(host_addr_i);
 
+    case (dmem_size_i)
+      2'd0: begin
+        dmem_misaligned = 1'b0;
+        dmem_expected_wstrb = 4'b0001 << dmem_addr_i[1:0];
+      end
+      2'd1: begin
+        dmem_misaligned = dmem_addr_i[0];
+        dmem_expected_wstrb = 4'b0011 << {dmem_addr_i[1], 1'b0};
+      end
+      2'd2: begin
+        dmem_misaligned = |dmem_addr_i[1:0];
+        dmem_expected_wstrb = 4'b1111;
+      end
+      default: begin
+        dmem_misaligned = 1'b1;
+        dmem_expected_wstrb = '0;
+      end
+    endcase
+    dmem_bad_wstrb = dmem_write_i && (dmem_wstrb_i != dmem_expected_wstrb);
+
     imem_ready_o = imem_valid_i;
-    imem_rdata_o = imem_boot ? boot_imem_rdata :
-                   imem_itim ? itim_if_rdata : '0;
+    imem_rdata_o = (imem_pmp_allow && imem_boot) ? boot_imem_rdata :
+                   (imem_pmp_allow && imem_itim) ? itim_if_rdata : '0;
     imem_error_o = imem_valid_i &&
-                   ((!imem_boot && !imem_itim) || imem_addr_i[0]);
+                   ((!imem_boot && !imem_itim) || imem_addr_i[0] ||
+                    !imem_pmp_allow);
 
     dmem_ready_o = dmem_valid_i;
-    dmem_rdata_o = dmem_boot ? boot_dmem_rdata :
-                   dmem_itim ? itim_cpu_rdata :
-                   dmem_dtim ? dtim_cpu_rdata :
-                   dmem_clint ? clint_cpu_rdata : '0;
+    dmem_rdata_o = (dmem_pmp_allow && dmem_boot) ? boot_dmem_rdata :
+                   (dmem_pmp_allow && dmem_itim) ? itim_cpu_rdata :
+                   (dmem_pmp_allow && dmem_dtim) ? dtim_cpu_rdata :
+                   (dmem_pmp_allow && dmem_clint) ? clint_cpu_rdata : '0;
     dmem_error_o = dmem_valid_i &&
                    ((!dmem_boot && !dmem_itim && !dmem_dtim && !dmem_clint) ||
-                    (dmem_boot && dmem_write_i) || dmem_addr_i[1:0] != 2'b00 ||
-                    clint_cpu_error);
+                     (dmem_boot && dmem_write_i) || dmem_misaligned || dmem_bad_wstrb ||
+                     !dmem_pmp_allow || clint_cpu_error);
 
     host_ready_o = host_valid_i;
     host_rdata_o = host_boot ? boot_host_rdata :
@@ -90,12 +124,38 @@ module mycore_soc (
   bootrom u_bootrom_dmem (.addr_i(dmem_addr_i), .rdata_o(boot_dmem_rdata));
   bootrom u_bootrom_host (.addr_i(host_addr_i), .rdata_o(boot_host_rdata));
 
+  pmp_checker u_imem_pmp (
+    .addr_i       (imem_addr_i),
+    .size_i       (imem_size_i),
+    .access_r_i   (1'b0),
+    .access_w_i   (1'b0),
+    .access_x_i   (1'b1),
+    .priv_m_i     (pmp_priv_m_i),
+    .pmpcfg_i,
+    .pmpaddr_i,
+    .matched_o    (imem_pmp_matched),
+    .allow_o      (imem_pmp_allow)
+  );
+
+  pmp_checker u_dmem_pmp (
+    .addr_i       (dmem_addr_i),
+    .size_i       (dmem_size_i),
+    .access_r_i   (!dmem_write_i),
+    .access_w_i   (dmem_write_i),
+    .access_x_i   (1'b0),
+    .priv_m_i     (pmp_priv_m_i),
+    .pmpcfg_i,
+    .pmpaddr_i,
+    .matched_o    (dmem_pmp_matched),
+    .allow_o      (dmem_pmp_allow)
+  );
+
   tim_ram #(.BYTES(ITIM_BYTES)) u_itim (
     .clk_i,
-    .if_valid_i   (imem_itim),
+    .if_valid_i   (imem_itim && imem_pmp_allow),
     .if_offset_i  (imem_addr_i - ITIM_BASE),
     .if_rdata_o   (itim_if_rdata),
-    .cpu_valid_i  (dmem_itim && (dmem_addr_i[1:0] == 2'b00)),
+    .cpu_valid_i  (dmem_itim && dmem_pmp_allow && !dmem_misaligned && !dmem_bad_wstrb),
     .cpu_write_i  (dmem_write_i),
     .cpu_offset_i (dmem_addr_i - ITIM_BASE),
     .cpu_wdata_i  (dmem_wdata_i),
@@ -116,7 +176,7 @@ module mycore_soc (
     .if_valid_i   (1'b0),
     .if_offset_i  ('0),
     .if_rdata_o   (zero_if_rdata),
-    .cpu_valid_i  (dmem_dtim && (dmem_addr_i[1:0] == 2'b00)),
+    .cpu_valid_i  (dmem_dtim && dmem_pmp_allow && !dmem_misaligned && !dmem_bad_wstrb),
     .cpu_write_i  (dmem_write_i),
     .cpu_offset_i (dmem_addr_i - DTIM_BASE),
     .cpu_wdata_i  (dmem_wdata_i),
@@ -135,7 +195,7 @@ module mycore_soc (
   clint u_clint (
     .clk_i,
     .rst_ni,
-    .cpu_valid_i  (dmem_clint && (dmem_addr_i[1:0] == 2'b00)),
+    .cpu_valid_i  (dmem_clint && dmem_pmp_allow && !dmem_misaligned && !dmem_bad_wstrb),
     .cpu_write_i  (dmem_write_i),
     .cpu_addr_i   (dmem_addr_i),
     .cpu_wdata_i  (dmem_wdata_i),
@@ -149,6 +209,8 @@ module mycore_soc (
     .host_wstrb_i (host_wstrb_i),
     .host_rdata_o (clint_host_rdata),
     .host_error_o (clint_host_error),
-    .irq_software_o
+    .irq_software_o,
+    .irq_timer_o,
+    .time_o
   );
 endmodule
