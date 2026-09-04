@@ -106,16 +106,21 @@ module tb_execute_units;
     uop_i.d.op = BR_JALR;
     uop_i.d.rd = 1;
     uop_i.d.rd_valid = 1;
-    uop_i.d.rvc = 1;
+    uop_i.d.rvc = 0;
     uop_i.d.imm = 3;
     uop_i.d.pred_taken = 1;
-    uop_i.d.pred_target = 32'h2002;
+    uop_i.d.pred_target = 32'h2004;
     uop_i.d.is_call = 1;
     uop_i.d.is_ret = 1;
+    src1_i = 32'h2001;
+    #1;
+    assert (br_o.target == 32'h2004 && !br_o.mispredict && alu_wb.data == 32'h1004);
+    assert (br_o.is_call && br_o.is_ret);
+
     src1_i = 32'h1fff;
     #1;
-    assert (br_o.target == 32'h2002 && !br_o.mispredict && alu_wb.data == 32'h1002);
-    assert (br_o.is_call && br_o.is_ret);
+    assert (!br_o.valid && alu_wb.rob.excp &&
+            alu_wb.rob.cause == EXC_IADDR_MISALIGNED && alu_wb.rob.tval == 32'h2002);
 
     uop_i.d.op = BR_BNE;
     uop_i.d.rvc = 0;

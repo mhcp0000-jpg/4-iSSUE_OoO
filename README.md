@@ -1,6 +1,6 @@
 # MYCORE
 
-RV32IMFC four-issue out-of-order core and a small host-loadable SoC.
+RV32IM four-issue out-of-order bring-up core and a small host-loadable SoC.
 
 ## Memory Map
 
@@ -19,7 +19,7 @@ The authoritative constants and address-decode helpers are in
 
 ## Implemented
 
-- RV32IMFC and compressed-instruction decode
+- RV32IM execution; F/C decode exists but is not advertised until execution support lands
 - Four-wide speculative rename with a 128-entry unified physical register map
 - Eight branch checkpoints with recovery epochs
 - 64-entry, four-wide reorder buffer with ten completion ports
@@ -28,7 +28,8 @@ The authoritative constants and address-decode helpers are in
 - Age-ordered integer and strict-order memory issue queues
 - Integer ALU/branch, RV32M multiply/divide, LSU, and speculative store queue
 - Boot ROM, 128 KiB ITIM, 128 KiB DTIM, CLINT MSIP, and host load port
-- Machine-mode CSRs, F state, 64-bit counters, HPM events, and 16-entry PMP
+- Machine-mode CSRs, configurable F state, 64-bit counters, HPM events, and 16-entry PMP
+- Boot-to-WFI, host ELF load, MSIP wakeup, and `tohost` end-to-end execution
 
 ## Simulation
 
@@ -50,6 +51,7 @@ tools/msys64/usr/bin/bash.exe scripts/run_sq_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_lsu_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_store_commit_tb.sh
 tools/msys64/usr/bin/bash.exe scripts/run_store_path_tb.sh
+tools/msys64/usr/bin/bash.exe scripts/run_core_system_tb.sh
 ```
 
 Ordered synthesizable RTL sources are listed in `rtl/files.f`.

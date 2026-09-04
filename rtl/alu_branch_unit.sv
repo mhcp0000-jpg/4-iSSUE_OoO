@@ -1,6 +1,8 @@
 `timescale 1ns/1ps
 
-module alu_branch_unit (
+module alu_branch_unit #(
+  parameter bit HAS_C = 1'b0
+) (
   input  logic                    valid_i,
   input  mycore_pkg::ren_uop_t    uop_i,
   input  logic [31:0]             src1_i,
@@ -12,6 +14,7 @@ module alu_branch_unit (
 
   logic [31:0] rhs, result, sequential_pc, branch_target;
   logic branch_taken;
+  logic branch_target_misaligned;
 
   always_comb begin
     rhs = uop_i.d.use2 ? src2_i : uop_i.d.imm;
@@ -54,16 +57,23 @@ module alu_branch_unit (
       endcase
     end
 
+    branch_target_misaligned = (uop_i.d.fu == FU_BR) && branch_taken &&
+                               (HAS_C ? branch_target[0] : |branch_target[1:0]);
+
     wb_o = '0;
     wb_o.rob.valid = valid_i && ((uop_i.d.fu == FU_ALU) || (uop_i.d.fu == FU_BR));
     wb_o.rob.rob_idx = uop_i.rob_idx;
     wb_o.rob.epoch = uop_i.epoch;
-    wb_o.write_pdst = wb_o.rob.valid && uop_i.d.rd_valid && (uop_i.d.rd != 0);
+    wb_o.rob.excp = wb_o.rob.valid && branch_target_misaligned;
+    wb_o.rob.cause = EXC_IADDR_MISALIGNED;
+    wb_o.rob.tval = branch_target;
+    wb_o.write_pdst = wb_o.rob.valid && !wb_o.rob.excp &&
+                      uop_i.d.rd_valid && (uop_i.d.rd != 0);
     wb_o.pdst = uop_i.pdst;
     wb_o.data = result;
 
     br_o = '0;
-    br_o.valid = valid_i && (uop_i.d.fu == FU_BR);
+    br_o.valid = valid_i && (uop_i.d.fu == FU_BR) && !branch_target_misaligned;
     br_o.pc = uop_i.d.pc;
     br_o.rvc = uop_i.d.rvc;
     br_o.taken = branch_taken;

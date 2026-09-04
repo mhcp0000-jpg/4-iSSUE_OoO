@@ -68,7 +68,9 @@ module store_queue (
     end
     dispatch_ready_o = !flush_i && !br_recover_fire_i &&
                        ((NSQ - int'(occupancy_o)) >= dispatch_count);
+  end
 
+  always_comb begin
     execute_match = execute_valid_i &&
                     entry_q[execute_uop_i.sq_idx[SW-1:0]].valid &&
                     (entry_q[execute_uop_i.sq_idx[SW-1:0]].uop.sq_idx == execute_uop_i.sq_idx) &&

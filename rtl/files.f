@@ -6,6 +6,7 @@ rtl/tim_ram.sv
 rtl/clint.sv
 rtl/pmp_checker.sv
 rtl/rvc_expand.sv
+rtl/frontend_single.sv
 rtl/decoder.sv
 rtl/rename_stage.sv
 rtl/rob.sv
@@ -18,3 +19,5 @@ rtl/store_commit_unit.sv
 rtl/lsu_unit.sv
 rtl/csr_file.sv
 rtl/mycore_soc.sv
+rtl/mycore_core.sv
+rtl/mycore_system.sv

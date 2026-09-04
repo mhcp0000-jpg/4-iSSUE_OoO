@@ -50,6 +50,8 @@ package csr_pkg;
   localparam logic [11:0] CSR_MHARTID       = 12'hf14;
   localparam logic [11:0] CSR_MCONFIGPTR    = 12'hf15;
 
+  localparam logic [31:0] MISA_RV32IM = 32'h4000_1100;
+  localparam logic [31:0] MISA_RV32IMF = 32'h4000_1120;
   localparam logic [31:0] MISA_RV32IMFC = 32'h4000_1124;
   localparam logic [31:0] MIP_MSIP = 32'h0000_0008;
   localparam logic [31:0] MIP_MTIP = 32'h0000_0080;

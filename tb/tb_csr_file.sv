@@ -34,7 +34,7 @@ module tb_csr_file;
   logic [7:0] pmpcfg_o [NPMP];
   logic [31:0] pmpaddr_o [NPMP];
 
-  csr_file dut (.*);
+  csr_file #(.HAS_F(1'b1), .HAS_C(1'b1)) dut (.*);
 
   initial begin
     clk_i = 1'b0;

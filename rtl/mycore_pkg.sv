@@ -25,7 +25,13 @@ package mycore_pkg;
   localparam int RASN    = 16;
   localparam int RASW    = $clog2(RASN);
   localparam int NWB     = 10;             // PRF write ports (ALU0-3, MUL, DIV, LD0, LD1, FPU, CSR)
-  localparam int NREAD   = FW * 3;
+  localparam int NREAD_DISPATCH = FW * 3;
+  localparam int NREAD_INT      = FW * 2;
+  localparam int NREAD_MEM      = 2;
+  localparam int NREAD_SERIAL   = 1;
+  localparam int NREAD_FP       = 3;
+  localparam int NREAD = NREAD_DISPATCH + NREAD_INT + NREAD_MEM +
+                         NREAD_SERIAL + NREAD_FP;
 
   localparam logic [31:0] RESET_PC = BOOTROM_BASE;
 
@@ -118,6 +124,7 @@ package mycore_pkg;
     logic [31:0] ras_top;
     logic        excp;
     logic [3:0]  cause;
+    logic [31:0] tval;
   } dec_uop_t;
 
   // ---------------- Renamed uop ----------------
@@ -137,6 +144,7 @@ package mycore_pkg;
     logic [EW-1:0] epoch;
     logic        excp;
     logic [3:0]  cause;
+    logic [31:0] tval;
   } rob_wb_t;
 
   typedef struct packed {

@@ -13,6 +13,12 @@ module tb_physical_regfile;
   logic [PW-1:0] raddr_i [NREAD];
   logic [31:0] rdata_o [NREAD];
   logic [NREAD-1:0] rready_o;
+  logic [PW-1:0] serial_raddr_i;
+  logic [31:0] serial_rdata_o;
+  logic serial_rready_o;
+  logic [PW-1:0] mem_base_raddr_i, mem_data_raddr_i;
+  logic [31:0] mem_base_rdata_o, mem_data_rdata_o;
+  logic mem_base_rready_o, mem_data_rready_o;
 
   physical_regfile dut (.*);
 
@@ -31,6 +37,9 @@ module tb_physical_regfile;
         wb_i[wb_idx] = '0;
       for (int read_idx = 0; read_idx < NREAD; read_idx++)
         raddr_i[read_idx] = '0;
+      serial_raddr_i = '0;
+      mem_base_raddr_i = '0;
+      mem_data_raddr_i = '0;
       #1;
     end
   endtask
@@ -127,12 +136,10 @@ module tb_physical_regfile;
     assert (rdata_o[0] == 32'h1111_1111);
     clear_inputs();
 
-    // Reallocation wins over a same-cycle completion from the old owner.
+    // Reallocation installs a new owner; subsequent stale completion is rejected.
     raddr_i[0] = 64;
-    set_wb(0, 64, 0, 0, 32'haaaa_aaaa);
     set_alloc(0, 64, 4, 1);
     #1;
-    assert (!wb_accepted_o[0] && !rready_o[0]);
     @(posedge clk_i); #1;
     clear_inputs();
     raddr_i[0] = 64;

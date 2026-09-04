@@ -29,8 +29,8 @@ _start:
   slli  a0, a0, 1
   ori   a0, a0, 1
   li    t0, TOHOST_ADDR
-  sw    a0, 0(t0)
   sw    zero, 4(t0)
+  sw    a0, 0(t0)
 .Ldone:
   wfi
   j     .Ldone
@@ -42,8 +42,8 @@ _start:
 trap_fail:
   csrr  a0, mcause
   slli  a0, a0, 1
-  ori   a0, a0, 1
+  ori   a0, a0, 3
   li    t0, TOHOST_ADDR
-  sw    a0, 0(t0)
   sw    zero, 4(t0)
+  sw    a0, 0(t0)
   j     .Ldone

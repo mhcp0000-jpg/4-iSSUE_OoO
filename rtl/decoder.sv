@@ -177,7 +177,7 @@ module decoder (
       u.fu = FU_CSR;      // route to commit for exception
       u.op = 0;
       u.use1 = 0; u.use2 = 0; u.use3 = 0; u.rd_valid = 0; u.is_branch = 0; u.is_call = 0; u.is_ret = 0;
-      u.excp = 1; u.cause = EXC_ILLEGAL;
+      u.excp = 1; u.cause = EXC_ILLEGAL; u.tval = fi.inst;
     end
     // register x0 as a source is never "used" (maps to phys 0 anyway)
     if (u.rs1 == 6'd0) u.use1 = 0;

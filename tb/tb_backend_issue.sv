@@ -21,6 +21,10 @@ module tb_backend_issue;
   logic [PW-1:0] prf_raddr [NREAD];
   logic [31:0] prf_rdata [NREAD];
   logic [NREAD-1:0] prf_rready;
+  logic [31:0] serial_prf_rdata;
+  logic serial_prf_rready;
+  logic [31:0] mem_base_rdata, mem_data_rdata;
+  logic mem_base_rready, mem_data_rready;
   logic [FW-1:0] src1_ready, src2_ready, src3_ready;
 
   logic [ISSUE_WIDTH-1:0] issue_valid, issue_accept;
@@ -43,6 +47,7 @@ module tb_backend_issue;
   logic rob_serial_valid;
   ren_uop_t rob_serial_uop;
   logic [3:0] rob_trap_cause;
+  logic [31:0] rob_trap_tval;
 
   always_comb begin
     backend_ready = rob_ready && iq_ready;
@@ -85,6 +90,7 @@ module tb_backend_issue;
     .serial_valid_o(rob_serial_valid), .serial_uop_o(rob_serial_uop),
     .trap_valid_o(rob_trap_valid), .trap_uop_o(rob_trap_uop),
     .trap_cause_o(rob_trap_cause), .flush_i,
+    .trap_tval_o(rob_trap_tval),
     .br_recover_valid_i(br_valid && br_mispredict), .br_rob_idx_i(br_rob),
     .br_epoch_i(br_epoch), .br_recover_fire_o(rob_recover_fire),
     .rob_head_o(rob_head), .rob_tail_o(rob_tail), .occupancy_o(rob_occupancy),
@@ -94,7 +100,12 @@ module tb_backend_issue;
   physical_regfile u_prf (
     .clk_i, .rst_ni, .alloc_fire_i(dispatch_fire), .alloc_valid_i(dispatch_valid),
     .alloc_uop_i(ren_uop), .wb_i(exec_wb), .wb_accepted_o(wb_accepted),
-    .raddr_i(prf_raddr), .rdata_o(prf_rdata), .rready_o(prf_rready)
+    .raddr_i(prf_raddr), .rdata_o(prf_rdata), .rready_o(prf_rready),
+    .serial_raddr_i('0), .serial_rdata_o(serial_prf_rdata),
+    .serial_rready_o(serial_prf_rready), .mem_base_raddr_i('0),
+    .mem_data_raddr_i('0), .mem_base_rdata_o(mem_base_rdata),
+    .mem_data_rdata_o(mem_data_rdata), .mem_base_rready_o(mem_base_rready),
+    .mem_data_rready_o(mem_data_rready)
   );
 
   issue_queue #(.DEPTH(IQ_DEPTH), .ISSUE_WIDTH(ISSUE_WIDTH)) u_iq (

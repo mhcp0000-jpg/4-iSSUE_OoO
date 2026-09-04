@@ -65,7 +65,7 @@ module rvc_expand (
           3'b010: o = enc_i(imm_ci, 5'd0, 3'b000, rd, 7'b0010011);            // c.li
           3'b011: begin
             if (rd == 5'd2) begin o = enc_i(nzimm_16sp, 5'd2, 3'b000, 5'd2, 7'b0010011); illegal = (nzimm_16sp == 0); end
-            else begin o = {imm_lui, rd, 7'b0110111}; illegal = ({c[12], c[6:2]} == 0); end
+            else begin o = {imm_lui, rd, 7'b0110111}; illegal = (rd == 0) || ({c[12], c[6:2]} == 0); end
           end
           3'b100: begin
             case (c[11:10])

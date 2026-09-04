@@ -4,7 +4,9 @@ module csr_file #(
   parameter logic [31:0] MVENDORID = 32'd0,
   parameter logic [31:0] MARCHID   = 32'd0,
   parameter logic [31:0] MIMPID    = 32'h0001_0000,
-  parameter logic [31:0] MHARTID   = 32'd0
+  parameter logic [31:0] MHARTID   = 32'd0,
+  parameter bit HAS_F = 1'b0,
+  parameter bit HAS_C = 1'b0
 ) (
   input  logic                         clk_i,
   input  logic                         rst_ni,
@@ -74,6 +76,10 @@ module csr_file #(
   logic csr_is_fp, trap_entry_mie;
   integer csr_index;
 
+  localparam logic [31:0] MISA_VALUE = MISA_RV32IM |
+                                           (HAS_F ? 32'h0000_0020 : 32'd0) |
+                                           (HAS_C ? 32'h0000_0004 : 32'd0);
+
   function automatic logic [31:0] legal_mtvec(input logic [31:0] value);
     return {value[31:2], (value[1:0] == 2'b01) ? 2'b01 : 2'b00};
   endfunction
@@ -87,7 +93,9 @@ module csr_file #(
   endfunction
 
   always_comb begin
-    mstatus_read_fs = (fp_flags_valid_i || fp_write_commit_i) ? 2'b11 : mstatus_fs_q;
+    mstatus_read_fs = HAS_F ?
+                      ((fp_flags_valid_i || fp_write_commit_i) ? 2'b11 : mstatus_fs_q) :
+                      2'b00;
     mstatus_value = '0;
     mstatus_value[31] = (mstatus_read_fs == 2'b11);
     mstatus_value[14:13] = mstatus_read_fs;
@@ -116,7 +124,7 @@ module csr_file #(
     sleeping_o = sleeping_q;
     frm_o = fcsr_q[7:5];
     fflags_o = fcsr_q[4:0];
-    fp_enabled_o = (mstatus_fs_q != 2'b00);
+    fp_enabled_o = HAS_F && (mstatus_fs_q != 2'b00);
   end
 
   always_comb begin
@@ -161,7 +169,7 @@ module csr_file #(
         CSR_FRM:           csr_rdata_o = {29'b0, fcsr_read_value[7:5]};
         CSR_FCSR:          csr_rdata_o = {24'b0, fcsr_read_value};
         CSR_MSTATUS:       csr_rdata_o = mstatus_value;
-        CSR_MISA:          csr_rdata_o = MISA_RV32IMFC;
+        CSR_MISA:          csr_rdata_o = MISA_VALUE;
         CSR_MIE:           csr_rdata_o = mie_q;
         CSR_MTVEC:         csr_rdata_o = mtvec_q;
         CSR_MSTATUSH:      csr_rdata_o = 32'd0;
@@ -203,7 +211,7 @@ module csr_file #(
     csr_illegal_o = csr_valid_i &&
                     ((!csr_implemented) || (csr_op_i > CSR_OP_RCI) ||
                      (csr_write_request && csr_readonly) ||
-                     (csr_is_fp && (mstatus_fs_q == 2'b00)));
+                     (csr_is_fp && (!HAS_F || (mstatus_fs_q == 2'b00))));
     csr_ready_o = 1'b1;
     csr_write_enable = csr_valid_i && csr_write_request && !csr_illegal_o;
 
@@ -235,11 +243,11 @@ module csr_file #(
     mcause_n = mcause_q;
     mtval_n = mtval_q;
 
-    if (fp_flags_valid_i) begin
+    if (HAS_F && fp_flags_valid_i) begin
       fcsr_n[4:0] = fcsr_q[4:0] | fp_flags_i;
       mstatus_fs_n = 2'b11;
     end
-    if (fp_write_commit_i)
+    if (HAS_F && fp_write_commit_i)
       mstatus_fs_n = 2'b11;
 
     if (csr_write_enable) begin
@@ -259,12 +267,13 @@ module csr_file #(
         CSR_MSTATUS: begin
           mstatus_mie_n = csr_new_value[3];
           mstatus_mpie_n = csr_new_value[7];
-          mstatus_fs_n = csr_new_value[14:13];
+          mstatus_fs_n = HAS_F ? csr_new_value[14:13] : 2'b00;
         end
         CSR_MIE:      mie_n = csr_new_value & MIP_MACHINE_MASK;
         CSR_MTVEC:    mtvec_n = legal_mtvec(csr_new_value);
         CSR_MSCRATCH: mscratch_n = csr_new_value;
-        CSR_MEPC:     mepc_n = {csr_new_value[31:1], 1'b0};
+        CSR_MEPC:     mepc_n = HAS_C ? {csr_new_value[31:1], 1'b0} :
+                                     {csr_new_value[31:2], 2'b00};
         CSR_MCAUSE:   mcause_n = csr_new_value;
         CSR_MTVAL:    mtval_n = csr_new_value;
         default: begin end
@@ -276,7 +285,7 @@ module csr_file #(
       mstatus_mpie_n = 1'b1;
     end
     if (trap_valid_i) begin
-      mepc_n = {trap_pc_i[31:1], 1'b0};
+      mepc_n = HAS_C ? {trap_pc_i[31:1], 1'b0} : {trap_pc_i[31:2], 2'b00};
       mcause_n = {trap_is_interrupt_i, trap_cause_i};
       mtval_n = trap_is_interrupt_i ? 32'd0 : trap_tval_i;
       mstatus_mpie_n = trap_entry_mie;

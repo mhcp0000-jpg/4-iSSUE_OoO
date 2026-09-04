@@ -33,7 +33,7 @@ module store_commit_unit (
 
   logic store_serial, store_match, launch_request, active_request, response;
   logic active_matches_serial, completed_matches_serial;
-  logic pending_q, pending_n, completed_q, completed_n;
+  logic pending_q, pending_n, completed_q, completed_n, faulted_q, faulted_n;
   ren_uop_t request_uop_q, request_uop_n, active_uop;
   logic [31:0] request_addr_q, request_addr_n, active_addr;
   logic [31:0] request_data_q, request_data_n, active_data;
@@ -46,7 +46,7 @@ module store_commit_unit (
                   (sq_uop_i.epoch == serial_uop_i.epoch) &&
                   (sq_uop_i.sq_idx == serial_uop_i.sq_idx);
     launch_request = store_serial && commit_ready_i && store_match &&
-                     !pending_q && !completed_q && !cancel_i;
+                     !pending_q && !completed_q && !faulted_q && !cancel_i;
     active_request = (pending_q || launch_request) && !cancel_i;
     active_uop = pending_q ? request_uop_q : serial_uop_i;
     active_addr = pending_q ? request_addr_q : sq_addr_i;
@@ -77,9 +77,11 @@ module store_commit_unit (
     fault_wb_o.rob.epoch = active_uop.epoch;
     fault_wb_o.rob.excp = fault_wb_o.rob.valid;
     fault_wb_o.rob.cause = EXC_SACCESS;
+    fault_wb_o.rob.tval = active_addr;
 
     pending_n = pending_q;
     completed_n = completed_q;
+    faulted_n = faulted_q;
     request_uop_n = request_uop_q;
     request_addr_n = request_addr_q;
     request_data_n = request_data_q;
@@ -87,6 +89,7 @@ module store_commit_unit (
     if (cancel_i) begin
       pending_n = 1'b0;
       completed_n = 1'b0;
+      faulted_n = 1'b0;
     end else begin
       if (response)
         pending_n = 1'b0;
@@ -94,6 +97,8 @@ module store_commit_unit (
         pending_n = 1'b1;
       if (response && !dmem_error_i)
         completed_n = 1'b1;
+      if (response && dmem_error_i)
+        faulted_n = 1'b1;
       if (commit_fire_i)
         completed_n = 1'b0;
       if (launch_request) begin
@@ -109,6 +114,7 @@ module store_commit_unit (
     if (!rst_ni) begin
       pending_q <= 1'b0;
       completed_q <= 1'b0;
+      faulted_q <= 1'b0;
       request_uop_q <= '0;
       request_addr_q <= '0;
       request_data_q <= '0;
@@ -116,6 +122,7 @@ module store_commit_unit (
     end else begin
       pending_q <= pending_n;
       completed_q <= completed_n;
+      faulted_q <= faulted_n;
       request_uop_q <= request_uop_n;
       request_addr_q <= request_addr_n;
       request_data_q <= request_data_n;

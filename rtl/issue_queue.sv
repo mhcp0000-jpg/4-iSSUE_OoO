@@ -73,9 +73,6 @@ module issue_queue #(
   end
 
   always_comb begin
-    best_slot = -1;
-    best_distance = 2 * NROB;
-    candidate_distance = 0;
     dispatch_count = 0;
     available_slots = 0;
     dispatch_ready_o = 1'b0;
@@ -84,7 +81,19 @@ module issue_queue #(
       if (entry_q[entry_idx].valid)
         occupancy_o++;
     end
+    for (int lane_idx = 0; lane_idx < FW; lane_idx++) begin
+      if (dispatch_valid_i[lane_idx])
+        dispatch_count++;
+    end
+    available_slots = DEPTH - int'(occupancy_o);
+    dispatch_ready_o = !flush_i && !br_recover_fire_i &&
+                       (available_slots >= dispatch_count);
+  end
 
+  always_comb begin
+    best_slot = -1;
+    best_distance = 2 * NROB;
+    candidate_distance = 0;
     selected = '0;
     issue_valid_o = '0;
     for (int issue_idx = 0; issue_idx < ISSUE_WIDTH; issue_idx++) begin
@@ -135,15 +144,6 @@ module issue_queue #(
       end
     end
 
-    for (int lane_idx = 0; lane_idx < FW; lane_idx++) begin
-      if (dispatch_valid_i[lane_idx])
-        dispatch_count++;
-    end
-    // Do not use same-cycle issue reclamation here; keeping ready independent
-    // of wakeup/acceptance avoids a PRF-IQ-dispatch combinational loop.
-    available_slots = DEPTH - int'(occupancy_o);
-    dispatch_ready_o = !flush_i && !br_recover_fire_i &&
-                       (available_slots >= dispatch_count);
   end
 
   always_comb begin

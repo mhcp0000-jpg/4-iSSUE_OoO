@@ -10,8 +10,8 @@ export PATH="$TOOLCHAIN:/usr/bin:$PATH"
 mkdir -p "$BUILD"
 
 COMMON_FLAGS=(
-  -march=rv32imfc_zicsr
-  -mabi=ilp32f
+  -march=rv32im_zicsr
+  -mabi=ilp32
   -mcmodel=medany
   -ffreestanding
   -fno-builtin

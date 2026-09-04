@@ -22,6 +22,7 @@ module rob (
   output logic                              trap_valid_o,
   output mycore_pkg::ren_uop_t              trap_uop_o,
   output logic [3:0]                        trap_cause_o,
+  output logic [31:0]                       trap_tval_o,
 
   input  logic                              flush_i,
   input  logic                              br_recover_valid_i,
@@ -41,6 +42,7 @@ module rob (
     logic       complete;
     logic       excp;
     logic [3:0] cause;
+    logic [31:0] tval;
     ren_uop_t   uop;
   } rob_entry_t;
 
@@ -51,8 +53,34 @@ module rob (
   logic [EW-1:0] epoch_q, epoch_n;
 
   logic [RW:0] scan_ptr, alloc_ptr;
-  logic commit_stop, trap_found, serial_block, br_recover_match;
+  logic commit_stop, br_recover_match, head_serial;
   integer alloc_count, commit_count, retire_count, available_slots;
+
+  assign rob_head_o = head_q;
+  assign rob_tail_o = tail_q;
+  assign occupancy_o = tail_q - head_q;
+  assign rob_epoch_o = epoch_q;
+  assign br_recover_match = br_recover_valid_i && !flush_i &&
+                            entry_q[br_rob_idx_i[RW-1:0]].valid &&
+                            (entry_q[br_rob_idx_i[RW-1:0]].uop.rob_idx == br_rob_idx_i) &&
+                            (entry_q[br_rob_idx_i[RW-1:0]].uop.epoch == br_epoch_i);
+  assign br_recover_fire_o = br_recover_match;
+
+  always_comb begin
+    alloc_count = 0;
+    for (int lane_idx = 0; lane_idx < FW; lane_idx++) begin
+      if (alloc_valid_i[lane_idx])
+        alloc_count++;
+    end
+    head_serial = entry_q[head_q[RW-1:0]].valid &&
+                  entry_q[head_q[RW-1:0]].complete &&
+                  ((entry_q[head_q[RW-1:0]].uop.d.fu == FU_CSR) ||
+                   (entry_q[head_q[RW-1:0]].uop.d.fu == FU_NONE) ||
+                   (entry_q[head_q[RW-1:0]].uop.d.fu == FU_ST));
+    available_slots = NROB - int'(occupancy_o);
+    alloc_ready_o = !flush_i && !br_recover_valid_i && !head_serial &&
+                    (available_slots >= alloc_count);
+  end
 
   // Completion bypass permits a result arriving this cycle to retire at the
   // same edge, while the epoch rejects stale wrong-path traffic.
@@ -68,6 +96,7 @@ module rob (
         if (wb_i[wb_idx].excp) begin
           entry_wb[wb_i[wb_idx].rob_idx[RW-1:0]].excp = 1'b1;
           entry_wb[wb_i[wb_idx].rob_idx[RW-1:0]].cause = wb_i[wb_idx].cause;
+          entry_wb[wb_i[wb_idx].rob_idx[RW-1:0]].tval = wb_i[wb_idx].tval;
         end
       end
     end
@@ -92,31 +121,31 @@ module rob (
     end
   end
 
-  // Commit and capacity outputs do not depend on alloc_fire_i. This avoids a
-  // ready/fire combinational loop when the ROB is connected to rename.
   always_comb begin
-    rob_head_o = head_q;
-    rob_tail_o = tail_q;
-    occupancy_o = tail_q - head_q;
-    rob_epoch_o = epoch_q;
-
-    alloc_ready_o = 1'b0;
-    commit_valid_o = '0;
-    for (int lane_idx = 0; lane_idx < FW; lane_idx++)
-      commit_uop_o[lane_idx] = '0;
     trap_valid_o = 1'b0;
     trap_uop_o = '0;
     trap_cause_o = '0;
+    trap_tval_o = '0;
+    if (!flush_i && !br_recover_match &&
+        entry_wb[head_q[RW-1:0]].valid &&
+        (entry_wb[head_q[RW-1:0]].uop.rob_idx == head_q) &&
+        entry_wb[head_q[RW-1:0]].complete &&
+        entry_wb[head_q[RW-1:0]].excp) begin
+      trap_valid_o = 1'b1;
+      trap_uop_o = entry_wb[head_q[RW-1:0]].uop;
+      trap_cause_o = entry_wb[head_q[RW-1:0]].cause;
+      trap_tval_o = entry_wb[head_q[RW-1:0]].tval;
+    end
+  end
 
+  // Commit and capacity outputs do not depend on alloc_fire_i. This avoids a
+  // ready/fire combinational loop when the ROB is connected to rename.
+  always_comb begin
+    commit_valid_o = '0;
+    for (int lane_idx = 0; lane_idx < FW; lane_idx++)
+      commit_uop_o[lane_idx] = '0;
     commit_count = 0;
     commit_stop = 1'b0;
-    trap_found = 1'b0;
-    serial_block = 1'b0;
-    br_recover_match = br_recover_valid_i &&
-                       entry_q[br_rob_idx_i[RW-1:0]].valid &&
-                       (entry_q[br_rob_idx_i[RW-1:0]].uop.rob_idx == br_rob_idx_i) &&
-                       (entry_q[br_rob_idx_i[RW-1:0]].uop.epoch == br_epoch_i);
-    br_recover_fire_o = br_recover_match;
     scan_ptr = head_q;
     if (!flush_i && !br_recover_match) begin
       for (int lane_idx = 0; lane_idx < FW; lane_idx++) begin
@@ -125,15 +154,10 @@ module rob (
               (entry_wb[scan_ptr[RW-1:0]].uop.rob_idx == scan_ptr) &&
               entry_wb[scan_ptr[RW-1:0]].complete) begin
             if (entry_wb[scan_ptr[RW-1:0]].excp) begin
-              trap_found = 1'b1;
-              trap_valid_o = 1'b1;
-              trap_uop_o = entry_wb[scan_ptr[RW-1:0]].uop;
-              trap_cause_o = entry_wb[scan_ptr[RW-1:0]].cause;
               commit_stop = 1'b1;
             end else if ((entry_wb[scan_ptr[RW-1:0]].uop.d.fu == FU_CSR) ||
                          (entry_wb[scan_ptr[RW-1:0]].uop.d.fu == FU_NONE) ||
                          (entry_wb[scan_ptr[RW-1:0]].uop.d.fu == FU_ST)) begin
-              serial_block = 1'b1;
               if (serial_valid_o &&
                   (serial_uop_o.rob_idx == scan_ptr) && serial_ready_i) begin
                 commit_valid_o[lane_idx] = 1'b1;
@@ -155,22 +179,7 @@ module rob (
       end
     end
 
-    // A trap behind retiring older instructions becomes visible only when
-    // those older commits are accepted in the same cycle.
-    if (trap_found && (commit_count != 0) && !commit_ready_i)
-      trap_valid_o = 1'b0;
-
     retire_count = commit_ready_i ? commit_count : 0;
-    alloc_count = 0;
-    for (int lane_idx = 0; lane_idx < FW; lane_idx++) begin
-      if (alloc_valid_i[lane_idx])
-        alloc_count++;
-    end
-    available_slots = NROB - int'(occupancy_o) + retire_count;
-
-    if (!flush_i && !br_recover_match)
-      alloc_ready_o = (available_slots >= alloc_count) &&
-                      !trap_found && !serial_block;
   end
 
   always_comb begin
@@ -214,6 +223,7 @@ module rob (
                                                   (alloc_i[lane_idx].d.fu == FU_CSR);
             entry_n[alloc_ptr[RW-1:0]].excp = alloc_i[lane_idx].d.excp;
             entry_n[alloc_ptr[RW-1:0]].cause = alloc_i[lane_idx].d.cause;
+            entry_n[alloc_ptr[RW-1:0]].tval = alloc_i[lane_idx].d.tval;
             entry_n[alloc_ptr[RW-1:0]].uop = alloc_i[lane_idx];
             alloc_ptr++;
           end

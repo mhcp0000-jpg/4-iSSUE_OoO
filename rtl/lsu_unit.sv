@@ -92,6 +92,7 @@ module lsu_unit (
         wb_o.rob.excp = 1'b1;
         wb_o.rob.cause = (uop_i.d.fu == FU_LD) ? EXC_LADDR_MISALIGNED :
                                                 EXC_SADDR_MISALIGNED;
+        wb_o.rob.tval = effective_addr;
       end else if (uop_i.d.fu == FU_ST) begin
         ready_o = 1'b1;
       end else if (!older_store_unknown_i && memory_complete) begin
@@ -99,6 +100,7 @@ module lsu_unit (
         wb_o.rob.valid = 1'b1;
         wb_o.rob.excp = !fully_forwarded && dmem_error_i;
         wb_o.rob.cause = EXC_LACCESS;
+        wb_o.rob.tval = effective_addr;
         wb_o.write_pdst = !wb_o.rob.excp && uop_i.d.rd_valid && (uop_i.d.rd != 0);
         wb_o.data = load_result;
       end

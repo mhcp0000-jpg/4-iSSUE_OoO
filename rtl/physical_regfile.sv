@@ -13,7 +13,18 @@ module physical_regfile (
 
   input  logic [mycore_pkg::PW-1:0]    raddr_i [mycore_pkg::NREAD],
   output logic [31:0]                  rdata_o [mycore_pkg::NREAD],
-  output logic [mycore_pkg::NREAD-1:0] rready_o
+  output logic [mycore_pkg::NREAD-1:0] rready_o,
+
+  input  logic [mycore_pkg::PW-1:0]    serial_raddr_i,
+  output logic [31:0]                  serial_rdata_o,
+  output logic                         serial_rready_o,
+
+  input  logic [mycore_pkg::PW-1:0]    mem_base_raddr_i,
+  input  logic [mycore_pkg::PW-1:0]    mem_data_raddr_i,
+  output logic [31:0]                  mem_base_rdata_o,
+  output logic [31:0]                  mem_data_rdata_o,
+  output logic                         mem_base_rready_o,
+  output logic                         mem_data_rready_o
 );
   import mycore_pkg::*;
 
@@ -25,6 +36,49 @@ module physical_regfile (
   logic [EW-1:0] owner_epoch_q [NPRF], owner_epoch_n [NPRF];
 
   always_comb begin
+    wb_accepted_o = '0;
+    wb_written = '0;
+    for (int wb_idx = 0; wb_idx < NWB; wb_idx++) begin
+      if (wb_i[wb_idx].rob.valid && wb_i[wb_idx].write_pdst &&
+          !wb_i[wb_idx].rob.excp && (wb_i[wb_idx].pdst != '0) &&
+          !wb_written[wb_i[wb_idx].pdst] && owner_valid_q[wb_i[wb_idx].pdst] &&
+          (owner_rob_q[wb_i[wb_idx].pdst] == wb_i[wb_idx].rob.rob_idx) &&
+          (owner_epoch_q[wb_i[wb_idx].pdst] == wb_i[wb_idx].rob.epoch)) begin
+        wb_accepted_o[wb_idx] = 1'b1;
+        wb_written[wb_i[wb_idx].pdst] = 1'b1;
+      end
+    end
+  end
+
+  always_comb begin
+    mem_base_rdata_o = data_q[mem_base_raddr_i];
+    mem_data_rdata_o = data_q[mem_data_raddr_i];
+    mem_base_rready_o = ready_q[mem_base_raddr_i];
+    mem_data_rready_o = ready_q[mem_data_raddr_i];
+    for (int wb_idx = 0; wb_idx < NWB; wb_idx++) begin
+      if (wb_accepted_o[wb_idx] && (wb_i[wb_idx].pdst == mem_base_raddr_i)) begin
+        mem_base_rdata_o = wb_i[wb_idx].data;
+        mem_base_rready_o = 1'b1;
+      end
+      if (wb_accepted_o[wb_idx] && (wb_i[wb_idx].pdst == mem_data_raddr_i)) begin
+        mem_data_rdata_o = wb_i[wb_idx].data;
+        mem_data_rready_o = 1'b1;
+      end
+    end
+  end
+
+  always_comb begin
+    serial_rdata_o = data_q[serial_raddr_i];
+    serial_rready_o = ready_q[serial_raddr_i];
+    for (int wb_idx = 0; wb_idx < NWB; wb_idx++) begin
+      if (wb_accepted_o[wb_idx] && (wb_i[wb_idx].pdst == serial_raddr_i)) begin
+        serial_rdata_o = wb_i[wb_idx].data;
+        serial_rready_o = 1'b1;
+      end
+    end
+  end
+
+  always_comb begin
     for (int preg_idx = 0; preg_idx < NPRF; preg_idx++) begin
       data_n[preg_idx] = data_q[preg_idx];
       owner_rob_n[preg_idx] = owner_rob_q[preg_idx];
@@ -32,19 +86,11 @@ module physical_regfile (
     end
     ready_n = ready_q;
     owner_valid_n = owner_valid_q;
-    wb_accepted_o = '0;
-    wb_written = '0;
 
     for (int wb_idx = 0; wb_idx < NWB; wb_idx++) begin
-      if (wb_i[wb_idx].rob.valid && wb_i[wb_idx].write_pdst &&
-          !wb_i[wb_idx].rob.excp && (wb_i[wb_idx].pdst != '0) &&
-          !wb_written[wb_i[wb_idx].pdst] && owner_valid_q[wb_i[wb_idx].pdst] &&
-          (owner_rob_q[wb_i[wb_idx].pdst] == wb_i[wb_idx].rob.rob_idx) &&
-          (owner_epoch_q[wb_i[wb_idx].pdst] == wb_i[wb_idx].rob.epoch)) begin
+      if (wb_accepted_o[wb_idx]) begin
         data_n[wb_i[wb_idx].pdst] = wb_i[wb_idx].data;
         ready_n[wb_i[wb_idx].pdst] = 1'b1;
-        wb_accepted_o[wb_idx] = 1'b1;
-        wb_written[wb_i[wb_idx].pdst] = 1'b1;
       end
     end
 
@@ -57,10 +103,6 @@ module physical_regfile (
           owner_valid_n[alloc_uop_i[lane_idx].pdst] = 1'b1;
           owner_rob_n[alloc_uop_i[lane_idx].pdst] = alloc_uop_i[lane_idx].rob_idx;
           owner_epoch_n[alloc_uop_i[lane_idx].pdst] = alloc_uop_i[lane_idx].epoch;
-          for (int wb_idx = 0; wb_idx < NWB; wb_idx++) begin
-            if (wb_i[wb_idx].pdst == alloc_uop_i[lane_idx].pdst)
-              wb_accepted_o[wb_idx] = 1'b0;
-          end
         end
       end
     end
@@ -69,9 +111,18 @@ module physical_regfile (
     ready_n[0] = 1'b1;
     owner_valid_n[0] = 1'b0;
 
+  end
+
+  always_comb begin
     for (int read_idx = 0; read_idx < NREAD; read_idx++) begin
-      rdata_o[read_idx] = data_n[raddr_i[read_idx]];
-      rready_o[read_idx] = ready_n[raddr_i[read_idx]];
+      rdata_o[read_idx] = data_q[raddr_i[read_idx]];
+      rready_o[read_idx] = ready_q[raddr_i[read_idx]];
+      for (int wb_idx = 0; wb_idx < NWB; wb_idx++) begin
+        if (wb_accepted_o[wb_idx] && (wb_i[wb_idx].pdst == raddr_i[read_idx])) begin
+          rdata_o[read_idx] = wb_i[wb_idx].data;
+          rready_o[read_idx] = 1'b1;
+        end
+      end
     end
   end
 
@@ -105,6 +156,12 @@ module physical_regfile (
           if (alloc_valid_i[lane_a] && alloc_valid_i[lane_b] &&
               alloc_uop_i[lane_a].d.rd_valid && alloc_uop_i[lane_b].d.rd_valid)
             assert (alloc_uop_i[lane_a].pdst != alloc_uop_i[lane_b].pdst);
+        end
+        for (int wb_idx = 0; wb_idx < NWB; wb_idx++) begin
+          if (alloc_valid_i[lane_a] && alloc_uop_i[lane_a].d.rd_valid &&
+              wb_accepted_o[wb_idx])
+            assert (alloc_uop_i[lane_a].pdst != wb_i[wb_idx].pdst)
+              else $error("PRF allocation collided with accepted writeback");
         end
       end
     end

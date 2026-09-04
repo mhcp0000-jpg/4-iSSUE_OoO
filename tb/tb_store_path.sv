@@ -18,6 +18,7 @@ module tb_store_path;
   logic rob_trap_valid;
   ren_uop_t rob_trap_uop;
   logic [3:0] rob_trap_cause;
+  logic [31:0] rob_trap_tval;
   logic [RW:0] rob_head, rob_tail, rob_occupancy;
   logic [EW-1:0] rob_epoch;
 
@@ -66,6 +67,7 @@ module tb_store_path;
     .serial_valid_o(rob_serial_valid), .serial_uop_o(rob_serial_uop),
     .trap_valid_o(rob_trap_valid), .trap_uop_o(rob_trap_uop),
     .trap_cause_o(rob_trap_cause), .flush_i,
+    .trap_tval_o(rob_trap_tval),
     .br_recover_valid_i(1'b0), .br_rob_idx_i('0), .br_epoch_i('0),
     .br_recover_fire_o(rob_recover_fire), .rob_head_o(rob_head),
     .rob_tail_o(rob_tail), .occupancy_o(rob_occupancy), .rob_epoch_o(rob_epoch)
@@ -226,6 +228,7 @@ module tb_store_path;
     @(posedge clk_i); #1;
     clear_inputs();
     assert (rob_trap_valid && rob_trap_cause == EXC_SACCESS);
+    assert (rob_trap_tval == 32'h4000_0000);
     assert (rob_occupancy == 1 && sq_occupancy == 1);
     flush_i = 1;
     @(posedge clk_i); #1;

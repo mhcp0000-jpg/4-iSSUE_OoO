@@ -35,6 +35,7 @@ module tb_backend;
   logic rob_serial_valid;
   ren_uop_t rob_serial_uop;
   logic [3:0] rob_trap_cause;
+  logic [31:0] rob_trap_tval;
 
   always_comb begin
     for (int lane_idx = 0; lane_idx < FW; lane_idx++) begin
@@ -91,6 +92,7 @@ module tb_backend;
     .trap_valid_o        (rob_trap_valid),
     .trap_uop_o          (rob_trap_uop),
     .trap_cause_o        (rob_trap_cause),
+    .trap_tval_o         (rob_trap_tval),
     .flush_i,
     .br_recover_valid_i  (br_resolve_valid_i && br_mispredict_i),
     .br_rob_idx_i,
