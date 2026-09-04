@@ -41,5 +41,9 @@ cycles. Future performance comparisons should continue to use one iteration.
 The simple ELF test improved from 1,454 to 1,239 execution cycles with these
 predictor changes.
 
+The post-RAS system profile retired 304,388 instructions and recorded 315,345
+instruction-memory wait cycles, versus only 598 backend-stall cycles. Fetch
+latency is therefore the next optimization target.
+
 Run with `scripts/run_coremark_tb.sh`. Use `scripts/fetch_coremark.sh` to obtain
 the pinned benchmark source.

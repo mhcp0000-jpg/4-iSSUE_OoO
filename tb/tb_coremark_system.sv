@@ -54,6 +54,32 @@ module tb_coremark_system;
   int unsigned write_address, write_data;
   byte unsigned write_strobe;
   real coremark_per_mhz;
+  longint unsigned retired_instructions, branch_count, branch_mispred_count;
+  longint unsigned load_count, store_count, backend_stall_cycles;
+  longint unsigned imem_wait_cycles;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      retired_instructions <= 0;
+      branch_count <= 0;
+      branch_mispred_count <= 0;
+      load_count <= 0;
+      store_count <= 0;
+      backend_stall_cycles <= 0;
+      imem_wait_cycles <= 0;
+    end else begin
+      retired_instructions <= retired_instructions + 64'(dut.u_core.retire_count);
+      branch_count <= branch_count + dut.u_core.perf_events[csr_pkg::PERF_BRANCH];
+      branch_mispred_count <= branch_mispred_count +
+                              dut.u_core.perf_events[csr_pkg::PERF_BRANCH_MISPRED];
+      load_count <= load_count + dut.u_core.perf_events[csr_pkg::PERF_LOAD];
+      store_count <= store_count + dut.u_core.perf_events[csr_pkg::PERF_STORE];
+      backend_stall_cycles <= backend_stall_cycles +
+                              (dut.u_core.fetch_inst.valid && !dut.u_core.fetch_consume);
+      imem_wait_cycles <= imem_wait_cycles +
+                          (dut.u_core.imem_valid_o && !dut.u_core.imem_ready_i);
+    end
+  end
 
   initial begin
     host_valid_i = 0;
@@ -92,6 +118,11 @@ module tb_coremark_system;
     $display("CoreMark iterations=%0d timed_cycles=%0d system_cycles=%0d",
              fromhost_o[63:32], fromhost_o[31:0], cycles);
     $display("Engineering estimate CoreMark/MHz=%0f", coremark_per_mhz);
+    $display("Perf retired=%0d branches=%0d mispredicts=%0d loads=%0d stores=%0d",
+             retired_instructions, branch_count, branch_mispred_count,
+             load_count, store_count);
+    $display("Perf backend_stall_cycles=%0d imem_wait_cycles=%0d",
+             backend_stall_cycles, imem_wait_cycles);
     $finish;
   end
 endmodule
